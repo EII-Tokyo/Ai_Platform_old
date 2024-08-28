@@ -44,13 +44,8 @@ class TaskParams(BaseModel):
 
 @app.post("/api/run_yolo")
 async def api_run_yolo(taskParams: TaskParams):
-    if taskParams.media_type == "image":
-        task = run_yolo_image.delay(taskParams.media_id, taskParams.model_id, taskParams.detect_class_indices, conf=taskParams.conf, imgsz=(taskParams.height, taskParams.width), augment=taskParams.augment)
-    elif taskParams.media_type == "video":
-        task = run_yolo_video.delay(taskParams.media_id, taskParams.model_id, taskParams.detect_class_indices, conf=taskParams.conf, imgsz=(taskParams.height, taskParams.width), augment=taskParams.augment)
     media_info = media_collection.find_one({'_id': ObjectId(taskParams.media_id)})
     task_doc = {
-        'celery_task_id': task.id,
         'media_id': taskParams.media_id,
         'media_type': taskParams.media_type,
         'original_filename': media_info['original_filename'],
@@ -65,6 +60,12 @@ async def api_run_yolo(taskParams: TaskParams):
         'inserted_time': time.time()
     }
     result = task_collection.insert_one(task_doc)
+
+    if taskParams.media_type == "image":
+        task = run_yolo_image.delay(str(result.inserted_id), taskParams.media_id, taskParams.model_id, taskParams.detect_class_indices, conf=taskParams.conf, imgsz=(taskParams.height, taskParams.width), augment=taskParams.augment)
+    elif taskParams.media_type == "video":
+        task = run_yolo_video.delay(str(result.inserted_id), taskParams.media_id, taskParams.model_id, taskParams.detect_class_indices, conf=taskParams.conf, imgsz=(taskParams.height, taskParams.width), augment=taskParams.augment)
+    
     return {"task_id": task.id, "task_doc_id": str(result.inserted_id)}
 
 

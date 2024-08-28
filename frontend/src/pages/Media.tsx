@@ -252,6 +252,7 @@ const MediaManagement = () => {
                                 <TableCell>Duration</TableCell>
                                 <TableCell>Origin File Size</TableCell>
                                 <TableCell>Origin Content Type</TableCell>
+                                <TableCell>Origin Vcodec</TableCell>
                                 <TableCell>Upload Time</TableCell>
                                 <TableCell>Status</TableCell>
                                 <TableCell>Progress</TableCell>
@@ -296,6 +297,7 @@ const MediaManagement = () => {
                                     <TableCell>{media.media_type === "video" ? formatDuration(media.duration) : ''}</TableCell>
                                     <TableCell>{formatFileSize(media.file_size)}</TableCell>
                                     <TableCell>{media.content_type}</TableCell>
+                                    <TableCell>{media.media_type === "video" ? media.vcodec : ''}</TableCell>
                                     <TableCell>{formatTimestamp(media.upload_time)}</TableCell>
                                     <TableCell>
                                         <Chip

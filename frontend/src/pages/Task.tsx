@@ -30,6 +30,36 @@ const TaskManagement = () => {
     const [fullscreenMediaSrc, setFullscreenMediaSrc] = useState('');
     const [fullscreenMediaType, setFullscreenMediaType] = useState<'image' | 'video'>('image');
     const videoRef = useRef(null);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+    const handleOpenDeleteModal = () => {
+        setIsDeleteModalOpen(true);
+    };
+
+    const handleCloseDeleteModal = () => {
+        setIsDeleteModalOpen(false);
+    };
+
+    const handleConfirmDelete = async () => {
+        try {
+            const response = await fetch(`${process.env.REACT_APP_API_URL}/api/delete_tasks`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(selectedTasks),
+            });
+            if (response.ok) {
+                setSelectedTasks([]);
+                await fetchTasks();
+            } else {
+                console.error('Failed to delete tasks');
+            }
+        } catch (error) {
+            console.error('Error deleting tasks:', error);
+        }
+        handleCloseDeleteModal();
+    };
 
     const getModelName = (modelId: string) => {
         const model = models.find(m => m._id === modelId);
@@ -159,26 +189,6 @@ const TaskManagement = () => {
         handleCloseTerminateModal();
     };
 
-    const handleDeleteTasks = async () => {
-        try {
-            const response = await fetch(`${process.env.REACT_APP_API_URL}/api/delete_tasks`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(selectedTasks),
-            });
-            if (response.ok) {
-                setSelectedTasks([]);
-                await fetchTasks();
-            } else {
-                console.error('Failed to delete tasks');
-            }
-        } catch (error) {
-            console.error('Error deleting tasks:', error);
-        }
-    };
-
     const handleSelectTask = (taskId: string) => {
         setSelectedTasks(prev =>
             prev.includes(taskId)
@@ -237,7 +247,13 @@ const TaskManagement = () => {
                 </div>
                 <div>
                     {selectedTasks.length > 0 && (
-                        <Button variant='contained' sx={{ textTransform: "none" }} disableElevation onClick={handleDeleteTasks} color="error">
+                        <Button
+                            variant='contained'
+                            sx={{ textTransform: "none" }}
+                            disableElevation
+                            onClick={handleOpenDeleteModal}
+                            color="error"
+                        >
                             Delete Selected ({selectedTasks.length})
                         </Button>
                     )}
@@ -297,7 +313,7 @@ const TaskManagement = () => {
                                         />
                                     )}
                                 </TableCell>
-                                <TableCell sx={{color: getModelName(task.model_id) === "Model Deleted!!!" ? "red" : "black"}} >{getModelName(task.model_id)}</TableCell>
+                                <TableCell sx={{ color: getModelName(task.model_id) === "Model Deleted!!!" ? "red" : "black" }} >{getModelName(task.model_id)}</TableCell>
                                 <TableCell>
                                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                                         {task.detect_classes && task.detect_classes.map((className, index) => (
@@ -595,6 +611,46 @@ const TaskManagement = () => {
                     </Button>
                     <Button onClick={handleConfirmTerminate} color="error" variant="contained" disableElevation sx={{ textTransform: "none" }}>
                         Terminate
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog
+                open={isDeleteModalOpen}
+                onClose={handleCloseDeleteModal}
+                aria-labelledby="delete-dialog-title"
+            >
+                <DialogTitle id="delete-dialog-title">
+                    Delete Tasks
+                    <Button
+                        aria-label="close"
+                        onClick={handleCloseDeleteModal}
+                        sx={{
+                            position: 'absolute',
+                            right: 8,
+                            top: 8,
+                            color: (theme) => theme.palette.grey[500],
+                            textTransform: "none"
+                        }}
+                        disableElevation
+                    >
+                        ×
+                    </Button>
+                </DialogTitle>
+                <DialogContent>
+                    <Typography>
+                        Are you sure you want to delete {selectedTasks.length} selected task{selectedTasks.length > 1 ? 's' : ''}?
+                    </Typography>
+                    <Typography variant="caption" color="error">
+                        This action cannot be undone.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCloseDeleteModal} color="primary" disableElevation sx={{ textTransform: "none" }}>
+                        Cancel
+                    </Button>
+                    <Button onClick={handleConfirmDelete} color="error" variant="contained" disableElevation sx={{ textTransform: "none" }}>
+                        Delete
                     </Button>
                 </DialogActions>
             </Dialog>

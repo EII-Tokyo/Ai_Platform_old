@@ -152,6 +152,7 @@ export interface Media {
   minio_filename: string;
   file_size: number;
   content_type: string;
+  vcodec: string;
   upload_time: number;
   media_type: "image" | "video";
   width: number;

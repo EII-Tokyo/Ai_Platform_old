@@ -60,10 +60,10 @@ def update_collection(task_name, task_id, update_data):
             {'$set': update_data}
         )
 
-@task_prerun.connect
-def task_prerun_handler(task_id, task, *args, **kwargs):
-    update_data = {'status': 'RUNNING', 'start_time': time.time()}
-    update_collection(task.name, task_id, update_data)
+# @task_prerun.connect
+# def task_prerun_handler(task_id, task, *args, **kwargs):
+#     update_data = {'status': 'RUNNING', 'start_time': time.time()}
+#     update_collection(task.name, task_id, update_data)
 
 @task_postrun.connect
 def task_postrun_handler(task_id, task, *args, retval=None, state=None, **kwargs):
@@ -92,6 +92,11 @@ def convert_video(self, video_id):
         video_info = media_collection.find_one({'_id': ObjectId(video_id)})
         if not video_info:
             raise Exception(f"Video with id {video_id} not found")
+
+        media_collection.update_one(
+            {'_id': ObjectId(video_id)},
+            {'$set': {'status': 'RUNNING'}}
+        )
 
         minio_filename = video_info['minio_filename']
         file_extension = os.path.splitext(minio_filename)[1]
@@ -202,13 +207,17 @@ def convert_video(self, video_id):
         raise e
 
 @app.task(base=AbortableTask, bind=True, name='run_yolo_image')
-def run_yolo_image(self, media_id, model_id, detect_class_indices, conf=0.25, imgsz=(1088, 1920), augment=False):
+def run_yolo_image(self, inserted_id, media_id, model_id, detect_class_indices, conf=0.25, imgsz=(1088, 1920), augment=False):
     print(f"开始处理照片 {media_id}")
     try:
-        print(model_id)
         media_info = media_collection.find_one({'_id': ObjectId(media_id)})
         if not media_info:
             raise Exception(f"File with id {media_id} not found")
+
+        task_collection.update_one(
+            {'_id': ObjectId(inserted_id)},
+            {'$set': {'celery_task_id': self.request.id, 'status': 'RUNNING'}}
+        )
 
         # 从MinIO下载文件
         minio_filename = media_info['minio_filename']
@@ -239,7 +248,7 @@ def run_yolo_image(self, media_id, model_id, detect_class_indices, conf=0.25, im
 
         # 更新任务状态
         task_collection.update_one(
-            {'celery_task_id': self.request.id},
+            {'_id': ObjectId(inserted_id)},
             {'$set': {'progress': 100, 'result_file': f"results/{result_filename}"}}
         )
 
@@ -254,12 +263,17 @@ def run_yolo_image(self, media_id, model_id, detect_class_indices, conf=0.25, im
         raise
 
 @app.task(base=AbortableTask, bind=True, name='run_yolo_video')
-def run_yolo_video(self, media_id, model_id, detect_class_indices, conf=0.25, imgsz=(1088, 1920), augment=False):
+def run_yolo_video(self, inserted_id, media_id, model_id, detect_class_indices, conf=0.25, imgsz=(1088, 1920), augment=False):
     print(f"开始处理视频 {media_id}")
     try:
         media_info = media_collection.find_one({'_id': ObjectId(media_id)})
         if not media_info:
             raise Exception(f"File with id {media_id} not found")
+
+        task_collection.update_one(
+            {'_id': ObjectId(inserted_id)},
+            {'$set': {'celery_task_id': self.request.id, 'status': 'RUNNING'}}
+        )
 
         # 从MinIO下载文件
         minio_filename = media_info['minio_filename']
@@ -297,7 +311,7 @@ def run_yolo_video(self, media_id, model_id, detect_class_indices, conf=0.25, im
 
             # 更新进度
             task_collection.update_one(
-                {'celery_task_id': self.request.id},
+                {'_id': ObjectId(inserted_id)},
                 {'$set': {'progress': progress}}
             )
 
@@ -322,7 +336,7 @@ def run_yolo_video(self, media_id, model_id, detect_class_indices, conf=0.25, im
 
         # 更新任务状态
         task_collection.update_one(
-            {'celery_task_id': self.request.id},
+            {'_id': ObjectId(inserted_id)},
             {'$set': {'progress': 100, 'result_file': f"results/{output_filename}"}}
         )
 
