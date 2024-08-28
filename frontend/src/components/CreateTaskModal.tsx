@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
-    Button, Modal, Box, TextField, CircularProgress, Select, MenuItem, Typography,
-    FormControl, InputLabel, Checkbox, FormControlLabel, Divider, Snackbar, Alert
+    Button, Modal, Box, TextField, CircularProgress, Select, MenuItem,
+    FormControl, InputLabel, Checkbox, FormControlLabel, Snackbar, Alert
 } from '@mui/material';
-import { Task, CreateTaskInput, Model } from '../interface';
+import { CreateTaskInput, Model, Media, ITaskRequest } from '../interface';
 
 const CreateTaskModal = ({
     fetchTasks,
@@ -16,56 +16,61 @@ const CreateTaskModal = ({
     setIsAddModalOpen: (isOpen: boolean) => void,
     models: Model[]
 }) => {
-    const [newTask, setNewTask] = useState<CreateTaskInput & { selectedClasses: string[] }>({
-        file: null,
-        file_type: 'image',
+    const [newTask, setNewTask] = useState<ITaskRequest>({
+        media_id: '',
+        media_type: 'image',
         model_id: '',
         conf: 0.25,
         width: 1920,
         height: 1088,
         augment: false,
-        selectedClasses: []
+        detect_classes: [] as string[],
+        detect_class_indices: [] as number[]
     });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [medias, setMedias] = useState<Media[]>([]);
 
     useEffect(() => {
         if (models.length > 0 && !newTask.model_id) {
             setNewTask(prev => ({
                 ...prev,
                 model_id: models[0]._id,
-                selectedClasses: models[0].default_detect_classes
+                detect_classes: models[0].default_detect_classes
             }));
         }
     }, [models]);
 
-    const handleAddTask = async (taskData: CreateTaskInput & { selectedClasses: string[] }) => {
+    useEffect(() => {
+        fetchMedias();
+    }, []);
+
+    const fetchMedias = async () => {
+        try {
+            const response = await fetch(`${process.env.REACT_APP_API_URL}/api/all-medias`);
+            if (!response.ok) {
+                throw new Error('Failed to fetch medias');
+            }
+            const data = await response.json();
+            setMedias(data);
+        } catch (error) {
+            console.error('Error fetching medias:', error);
+            setError(error instanceof Error ? error.message : 'An unknown error occurred');
+        }
+    };
+
+    const handleAddTask = async (taskData: ITaskRequest & { detect_classes: string[] }) => {
         try {
             setIsLoading(true);
             setError(null);
 
-            if (!taskData.file) {
-                throw new Error('No file provided for new task');
+            if (!taskData.media_id) {
+                throw new Error('No media selected for new task');
             }
-
-            const formData = new FormData();
-            formData.append('file', taskData.file);
-
-            const uploadResponse = await fetch(`${process.env.REACT_APP_API_URL}/api/upload_file`, {
-                method: 'POST',
-                body: formData,
-            });
-
-            if (!uploadResponse.ok) {
-                throw new Error('Failed to upload file');
-            }
-
-            const uploadResult = await uploadResponse.json();
-            const fileId = uploadResult.file_id;
 
             // Convert selected class names to their indices
             const selectedModel = models.find(model => model._id === taskData.model_id);
-            const detectClassIndices = taskData.selectedClasses.map(className =>
+            const detectClassIndices = taskData.detect_classes.map(className =>
                 selectedModel?.classes.indexOf(className)
             ).filter(index => index !== -1) as number[];
 
@@ -75,15 +80,15 @@ const CreateTaskModal = ({
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    file_id: fileId,
-                    file_type: taskData.file_type,
+                    media_id: taskData.media_id,
+                    media_type: taskData.media_type,
                     model_id: taskData.model_id,
                     conf: taskData.conf,
                     width: taskData.width,
                     height: taskData.height,
                     augment: taskData.augment,
-                    detect_classes: taskData.selectedClasses,
-                    detect_class_indices: detectClassIndices  // Send class indices instead of class names
+                    detect_classes: taskData.detect_classes,
+                    detect_class_indices: detectClassIndices
                 }),
             });
 
@@ -106,37 +111,44 @@ const CreateTaskModal = ({
         setNewTask(prev => ({
             ...prev,
             model_id: modelId,
-            selectedClasses: selectedModel ? selectedModel.default_detect_classes : []
+            detect_classes: selectedModel ? selectedModel.default_detect_classes : []
         }));
     };
 
     const handleClassToggle = (className: string) => {
-        setNewTask(prev => ({
-            ...prev,
-            selectedClasses: prev.selectedClasses.includes(className)
-                ? prev.selectedClasses.filter(c => c !== className)
-                : [...prev.selectedClasses, className]
-        }));
+        setNewTask(prev => {
+            const selectedModel = models.find(model => model._id === prev.model_id);
+            if (!selectedModel) return prev;
+
+            let newClasses: string[];
+            if (prev.detect_classes.includes(className)) {
+                newClasses = prev.detect_classes.filter(c => c !== className);
+            } else {
+                newClasses = [...prev.detect_classes, className];
+            }
+            
+            // Sort the newClasses array to match the order in the model's class list
+            newClasses.sort((a, b) => {
+                const indexA = selectedModel.classes.indexOf(a);
+                const indexB = selectedModel.classes.indexOf(b);
+                return indexA - indexB;
+            });
+
+            return {
+                ...prev,
+                detect_classes: newClasses
+            };
+        });
     };
 
     const selectedModel = models.find(model => model._id === newTask.model_id);
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files ? e.target.files[0] : null;
-        if (file) {
-            const fileType = file.type.split('/')[0];
-            if (fileType === 'image' || fileType === 'video' || file.name.endsWith('.avi')) {
-                setNewTask({
-                    ...newTask,
-                    file: file,
-                    file_type: fileType === 'image' ? 'image' : 'video'
-                });
-                setError(null);
-            } else {
-                setError('Invalid file type. Please select an image or video file.');
-                e.target.value = ''; // Reset the file input
-            }
-        }
+    const handleMediaChange = (mediaId: string, mediaType: 'image' | 'video') => {
+        setNewTask(prev => ({
+            ...prev,
+            media_id: mediaId,
+            media_type: mediaType
+        }));
     };
 
     return (
@@ -145,22 +157,29 @@ const CreateTaskModal = ({
                 <div className="mb-6 text-2xl font-bold">Add New Task</div>
                 <div className='flex flex-col gap-8'>
                     <div className='flex justify-between items-center'>
-                        <div className='basis-1/4 text-gray-700 text-sm'>Video/Image</div>
-                        <input
-                            className='basis-3/4'
-                            type="file"
-                            accept="image/*,video/*,.avi"
-                            onChange={handleFileChange}
-                            disabled={isLoading}
-                        />
+                        <div className='basis-1/4 text-gray-700 text-sm'>Select Media</div>
+                        <FormControl className='basis-3/4' size="small">
+                            <InputLabel>Media</InputLabel>
+                            <Select
+                                label="Media"
+                                value={newTask.media_id}
+                                onChange={(e) => handleMediaChange(e.target.value as string, medias.find(m => m._id === e.target.value)?.media_type as 'image' | 'video')}
+                                disabled={isLoading}
+                                // sx={{ "& .MuiOutlinedInput-input": { padding: "12px 14px 12px 32px" } }}
+                            >
+                                {medias.map(media => (
+                                    <MenuItem key={media._id} value={media._id}>{media.original_filename}</MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
                     </div>
                     <div className='flex justify-between items-center'>
                         <div className='basis-1/4 text-gray-700 text-sm'>Model</div>
-                        <FormControl className='basis-3/4'>
+                        <FormControl className='basis-3/4' size="small">
                             <InputLabel>Model</InputLabel>
                             <Select
-                                label="Model"                               
-                                sx={{ "& .MuiOutlinedInput-input": { padding: "12px 16px" } }}
+                                label="Model"
+                                // sx={{ "& .MuiOutlinedInput-input": { padding: "8.5px 16px" } }}
                                 value={newTask.model_id}
                                 onChange={(e) => handleModelChange(e.target.value)}
                                 disabled={isLoading}
@@ -185,7 +204,7 @@ const CreateTaskModal = ({
                                             key={className}
                                             control={
                                                 <Checkbox
-                                                    checked={newTask.selectedClasses.includes(className)}
+                                                    checked={newTask.detect_classes.includes(className)}
                                                     onChange={() => handleClassToggle(className)}
                                                     disabled={isLoading}
                                                 />
@@ -208,7 +227,7 @@ const CreateTaskModal = ({
                             value={newTask.conf}
                             onChange={(e) => setNewTask({ ...newTask, conf: parseFloat(e.target.value) })}
                             disabled={isLoading}
-                            sx={{ "& .MuiOutlinedInput-input": { padding: "12px 16px" } }}
+                            sx={{ "& .MuiOutlinedInput-input": { padding: "8.5px 16px" } }}
                         />
                     </div>
                     <div className='flex justify-between items-center'>
@@ -222,7 +241,7 @@ const CreateTaskModal = ({
                             value={newTask.width}
                             onChange={(e) => setNewTask({ ...newTask, width: parseInt(e.target.value) })}
                             disabled={isLoading}
-                            sx={{ "& .MuiOutlinedInput-input": { padding: "12px 16px" } }}
+                            sx={{ "& .MuiOutlinedInput-input": { padding: "8.5px 16px" } }}
                         />
                     </div>
                     <div className='flex justify-between items-center'>
@@ -236,7 +255,7 @@ const CreateTaskModal = ({
                             value={newTask.height}
                             onChange={(e) => setNewTask({ ...newTask, height: parseInt(e.target.value) })}
                             disabled={isLoading}
-                            sx={{ "& .MuiOutlinedInput-input": { padding: "12px 16px" } }}
+                            sx={{ "& .MuiOutlinedInput-input": { padding: "8.5px 16px" } }}
                         />
                     </div>
                     <div className='flex justify-between items-center'>
@@ -255,8 +274,9 @@ const CreateTaskModal = ({
                         onClick={() => handleAddTask(newTask)}
                         variant="contained"
                         color="primary"
-                        disabled={isLoading || !newTask.file}
+                        disabled={isLoading}
                         disableElevation
+                        sx={{ textTransform: "none" }}
                     >
                         {isLoading ? 'Adding Task...' : 'Add Task'}
                     </Button>

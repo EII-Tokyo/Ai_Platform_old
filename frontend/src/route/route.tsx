@@ -7,6 +7,7 @@ import Dashboard from "../pages/Dashboard";
 import ImageViewer from "../pages/ImageViewer";
 import MobileIndex from "../mobilePages/Index";
 import ModelManagement from "../pages/Model";
+import MediaManagement from "../pages/Media";
 
 export function BrowserRoute() {
   const routes = useRoutes([
@@ -15,6 +16,7 @@ export function BrowserRoute() {
       element: <BrowserLayout />,
       children: [
         { element: <TaskManagement />, index: true },
+        { element: <MediaManagement />, path: 'Media' },
         { element: <ModelManagement />, path: 'Model' },
       ],
     },

@@ -86,7 +86,7 @@ const CreateModelModal: React.FC<CreateModelModalProps> = ({ isOpen, onClose, on
                                 fullWidth
                                 value={modelName}
                                 onChange={(e) => setModelName(e.target.value)}
-                                sx={{ "& .MuiOutlinedInput-input": { padding: "12px 16px" } }}
+                                sx={{ "& .MuiOutlinedInput-input": { padding: "8.5px 16px" } }}
                             />
                         </div>
                         <div className='flex justify-between items-center'>
@@ -100,7 +100,7 @@ const CreateModelModal: React.FC<CreateModelModalProps> = ({ isOpen, onClose, on
                                     onChange={handleModelFileChange}
                                 />
                                 <label htmlFor="model-file-upload">
-                                    <Button variant="outlined" component="span">
+                                    <Button variant="outlined" component="span" sx={{ textTransform: "none" }}>
                                         Upload Model File
                                     </Button>
                                 </label>
@@ -118,7 +118,7 @@ const CreateModelModal: React.FC<CreateModelModalProps> = ({ isOpen, onClose, on
                                     onChange={handleYamlFileChange}
                                 />
                                 <label htmlFor="yaml-file-upload">
-                                    <Button variant="outlined" component="span">
+                                    <Button variant="outlined" component="span" sx={{ textTransform: "none" }}>
                                         Upload YAML File
                                     </Button>
                                 </label>
@@ -138,10 +138,10 @@ const CreateModelModal: React.FC<CreateModelModalProps> = ({ isOpen, onClose, on
                         </div>
                     </div>
                     <Box className="mt-8 flex items-center justify-end">
-                        <Button onClick={onClose} color="primary" className="mr-4">
+                        <Button onClick={onClose} color="primary" className="mr-4" sx={{ textTransform: "none" }}>
                             Cancel
                         </Button>
-                        <Button type="submit" variant="contained" color="primary" disabled={isLoading}>
+                        <Button type="submit" variant="contained" color="primary" disabled={isLoading} sx={{ textTransform: "none" }}>
                             {isLoading ? <CircularProgress size={24} /> : 'Create'}
                         </Button>
                     </Box>

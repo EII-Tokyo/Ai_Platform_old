@@ -42,11 +42,25 @@ const UpdateModelModal: React.FC<UpdateModelModalProps> = ({ isOpen, onClose, on
     }, [model]);
 
     const handleClassToggle = (className: string) => {
-        setSelectedClasses(prevSelected =>
-            prevSelected.includes(className)
-                ? prevSelected.filter(c => c !== className)
-                : [...prevSelected, className]
-        );
+        setSelectedClasses(prev => {
+            let newClasses: string[];
+            if (prev.includes(className)) {
+                newClasses = prev.filter(c => c !== className);
+            } else {
+                newClasses = [...prev, className];
+            }
+            
+            // Sort the newClasses array to match the order in the model's class list
+            if (model) {
+                newClasses.sort((a, b) => {
+                    const indexA = model.classes.indexOf(a);
+                    const indexB = model.classes.indexOf(b);
+                    return indexA - indexB;
+                });
+            }
+
+            return newClasses; // Return the sorted newClasses array directly
+        });
     };
 
     const handleSelectAll = () => {
@@ -107,7 +121,7 @@ const UpdateModelModal: React.FC<UpdateModelModalProps> = ({ isOpen, onClose, on
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 required
-                                sx={{ "& .MuiOutlinedInput-input": { padding: "12px 16px" } }}
+                                sx={{ "& .MuiOutlinedInput-input": { padding: "8.5px 16px" } }}
                             />
                         </div>
                         <div className='flex justify-between items-start'>
@@ -154,10 +168,10 @@ const UpdateModelModal: React.FC<UpdateModelModalProps> = ({ isOpen, onClose, on
                         </div>
                     </div>
                     <Box className="mt-8 flex items-center justify-end">
-                        <Button onClick={onClose} color="primary" className="mr-4">
+                        <Button onClick={onClose} color="primary" className="mr-4" disableElevation sx={{ textTransform: "none" }}>
                             Cancel
                         </Button>
-                        <Button type="submit" variant="contained" color="primary" disabled={isLoading}>
+                        <Button type="submit" variant="contained" color="primary" disabled={isLoading} disableElevation sx={{ textTransform: "none" }}>
                             {isLoading ? <CircularProgress size={24} /> : 'Update'}
                         </Button>
                     </Box>

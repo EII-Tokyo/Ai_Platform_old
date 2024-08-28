@@ -65,7 +65,7 @@ async def create_model(
     model_file: UploadFile = File(...),
     yaml_file: UploadFile = File(...)
 ):
-    print(name, description)
+    os.makedirs("weights", exist_ok=True)
     # Save model file
     model_filename = f"{name}_{int(time.time())}.pt"
     model_path = os.path.join("weights", model_filename)
@@ -164,7 +164,7 @@ async def bulk_delete_models(delete_data: BulkDeleteModel):
 
 @router.get("/models", response_model=List[ModelResponse])
 async def list_models():
-    models = list(model_collection.find())
+    models = list(model_collection.find().sort('_id', -1))
     
     model_responses = [
         ModelResponse(

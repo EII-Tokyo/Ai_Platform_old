@@ -60,7 +60,7 @@ const ModelDetailsModal: React.FC<ModelDetailsModalProps> = ({ isOpen, onClose, 
                     </div>
                 )}
                 <Box className="mt-8 flex items-center justify-end">
-                    <Button onClick={onClose} variant="contained" color="primary">
+                    <Button onClick={onClose} variant="contained" color="primary" disableElevation sx={{ textTransform: "none" }}>
                         Close
                     </Button>
                 </Box>

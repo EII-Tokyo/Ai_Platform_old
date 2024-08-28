@@ -29,7 +29,7 @@ const MobileMain = styled('div')(({ theme }) => ({
 // ----------------------------------------------------------------------
 
 export function BrowserLayout() {
-    const navItems = [['Task', ''], ['Model', 'Model']];
+    const navItems = [['Task', ''], ['Media', 'Media'], ['Model', 'Model']];
     const [username, setUsername] = useState('');
     const [inputUsername, setInputUsername] = useState('');
     const [password, setPassword] = useState('');

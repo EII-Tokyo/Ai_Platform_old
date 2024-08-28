@@ -107,7 +107,8 @@ const ModelManagement = () => {
                             variant="contained"
                             color="secondary"
                             onClick={handleDeleteSelected}
-                            sx={{ mr: 2 }}
+                            disableElevation
+                            sx={{ mr: 2, textTransform: "none" }}
                         >
                             Delete Selected ({selectedModels.length})
                         </Button>
@@ -116,6 +117,8 @@ const ModelManagement = () => {
                         variant="contained"
                         color="primary"
                         onClick={handleOpenCreateModal}
+                        disableElevation
+                        sx={{ textTransform: "none" }}
                     >
                         Create New Model
                     </Button>

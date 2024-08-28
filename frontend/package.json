@@ -30,7 +30,7 @@
     "video.js": "7.20.0"
   },
   "scripts": {
-    "start": "PORT=3001 react-scripts start --env-file .env.development",
+    "start": "PORT=3002 react-scripts start --env-file .env.development",
     "build": "react-scripts build --env-file .env.production",
     "test": "react-scripts test",
     "eject": "react-scripts eject"

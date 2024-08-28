@@ -5,3 +5,4 @@ test-data/
 mongo/
 docker-compose.yml
 backend/weights/
+backend/results/

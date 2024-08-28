@@ -14,7 +14,7 @@ from celery_worker import run_yolo_image, run_yolo_video
 from pydantic import BaseModel
 from apis.models import router as model_router
 from apis.tasks import router as task_router
-from apis.upload import router as upload_router
+from apis.medias import router as media_router
 
 # 创建FastAPI应用
 app = FastAPI()
@@ -29,11 +29,11 @@ app.add_middleware(
 
 app.include_router(model_router, prefix="/api")
 app.include_router(task_router, prefix="/api")
-app.include_router(upload_router, prefix="/api")
+app.include_router(media_router, prefix="/api")
 
 class TaskParams(BaseModel):
-    file_id: str
-    file_type: str
+    media_id: str
+    media_type: str
     model_id: str
     conf: float = 0.25
     width: int = 1920
@@ -44,16 +44,17 @@ class TaskParams(BaseModel):
 
 @app.post("/api/run_yolo")
 async def api_run_yolo(taskParams: TaskParams):
-    if taskParams.file_type == "image":
-        task = run_yolo_image.delay(taskParams.file_id, taskParams.model_id, taskParams.detect_class_indices, conf=taskParams.conf, imgsz=(taskParams.height, taskParams.width), augment=taskParams.augment)
-    elif taskParams.file_type == "video":
-        task = run_yolo_video.delay(taskParams.file_id, taskParams.model_id, taskParams.detect_class_indices, conf=taskParams.conf, imgsz=(taskParams.height, taskParams.width), augment=taskParams.augment)
-    media_info = media_collection.find_one({'_id': ObjectId(taskParams.file_id)})
+    if taskParams.media_type == "image":
+        task = run_yolo_image.delay(taskParams.media_id, taskParams.model_id, taskParams.detect_class_indices, conf=taskParams.conf, imgsz=(taskParams.height, taskParams.width), augment=taskParams.augment)
+    elif taskParams.media_type == "video":
+        task = run_yolo_video.delay(taskParams.media_id, taskParams.model_id, taskParams.detect_class_indices, conf=taskParams.conf, imgsz=(taskParams.height, taskParams.width), augment=taskParams.augment)
+    media_info = media_collection.find_one({'_id': ObjectId(taskParams.media_id)})
     task_doc = {
         'celery_task_id': task.id,
-        'file_id': taskParams.file_id,
-        'file_type': taskParams.file_type,
-        'original_file': media_info['minio_filename'],
+        'media_id': taskParams.media_id,
+        'media_type': taskParams.media_type,
+        'original_filename': media_info['original_filename'],
+        'minio_filename': media_info['minio_filename'],
         'model_id': taskParams.model_id,
         'detect_classes': taskParams.detect_classes,
         'status': 'PENDING',

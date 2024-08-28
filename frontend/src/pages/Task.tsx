@@ -255,6 +255,7 @@ const TaskManagement = () => {
                                     onChange={handleSelectAllTasks}
                                 />
                             </TableCell>
+                            <TableCell>Media Name</TableCell>
                             <TableCell>Media</TableCell>
                             <TableCell>Model Name</TableCell>
                             <TableCell>Detect Classes</TableCell>
@@ -278,19 +279,20 @@ const TaskManagement = () => {
                                         onChange={() => handleSelectTask(task._id)}
                                     />
                                 </TableCell>
+                                <TableCell>{task.original_filename}</TableCell>
                                 <TableCell>
-                                    {task.file_type === 'image' ? (
+                                    {task.media_type === 'image' ? (
                                         <img
-                                            src={`${process.env.REACT_APP_API_URL}/yolo-files/${task.original_file}`}
+                                            src={`${process.env.REACT_APP_API_URL}/yolo-files/${task.minio_filename}`}
                                             alt="Task input"
                                             style={{ width: '180px', height: '120px', objectFit: 'cover', cursor: 'pointer' }}
-                                            onClick={() => handleOpenFullscreenMedia(`${process.env.REACT_APP_API_URL}/yolo-files/${task.original_file}`, 'image')}
+                                            onClick={() => handleOpenFullscreenMedia(`${process.env.REACT_APP_API_URL}/yolo-files/${task.minio_filename}`, 'image')}
                                         />
                                     ) : (
                                         <video
-                                            src={`${process.env.REACT_APP_API_URL}/yolo-files/${task.original_file}`}
+                                            src={`${process.env.REACT_APP_API_URL}/yolo-files/${task.minio_filename}`}
                                             style={{ width: '180px', height: '120px', objectFit: 'cover', cursor: 'pointer' }}
-                                            onClick={() => handleOpenFullscreenMedia(`${process.env.REACT_APP_API_URL}/yolo-files/${task.original_file}`, 'video')}
+                                            onClick={() => handleOpenFullscreenMedia(`${process.env.REACT_APP_API_URL}/yolo-files/${task.minio_filename}`, 'video')}
                                             controls
                                         />
                                     )}
@@ -381,6 +383,14 @@ const TaskManagement = () => {
                             <div className="grid grid-cols-3 gap-24 mt-2">
                                 <div>
                                     <div className='flex justify-between mb-2'>
+                                        <div className='text-sm text-gray-600'>Task Id</div>
+                                        <div className='text-base'>{selectedTask.celery_task_id}</div>
+                                    </div>
+                                    <div className='flex justify-between mb-2'>
+                                        <div className='text-sm text-gray-600'>Media Name</div>
+                                        <div className='text-base'>{selectedTask.original_filename}</div>
+                                    </div>
+                                    <div className='flex justify-between mb-2'>
                                         <div className='text-sm text-gray-600'>Model Name</div>
                                         <div className='text-base'>{getModelName(selectedTask.model_id)}</div>
                                     </div>
@@ -393,6 +403,7 @@ const TaskManagement = () => {
                                                 size="small"
                                                 color="primary"
                                                 variant="outlined"
+                                                sx={{ marginRight: '4px' }}
                                             />
                                         ))}</div>
                                     </div>
@@ -433,7 +444,7 @@ const TaskManagement = () => {
                                         <Button
                                             variant="contained"
                                             color="primary"
-                                            sx={{ mt: 2 }}
+                                            sx={{ mt: 2, textTransform: "none" }}
                                             onClick={() => handleDownload(`${process.env.REACT_APP_API_URL}/yolo-files/${selectedTask.result_file}`, selectedTask.result_file)}
                                             disableElevation
                                         >
@@ -443,7 +454,7 @@ const TaskManagement = () => {
                                 </div>
                                 {selectedTask.result_file ? (
                                     <div className="mt-2 flex items-center justify-center">
-                                        {selectedTask.file_type === 'image' ? (
+                                        {selectedTask.media_type === 'image' ? (
                                             <img
                                                 src={`${process.env.REACT_APP_API_URL}/yolo-files/${selectedTask.result_file}`}
                                                 alt="Task result"
@@ -490,7 +501,9 @@ const TaskManagement = () => {
                             '&:hover': {
                                 backgroundColor: 'rgba(0,0,0,0.7)',
                             },
+                            textTransform: "none"
                         }}
+                        disableElevation
                     >
                         Close
                     </Button>
@@ -532,7 +545,9 @@ const TaskManagement = () => {
                             '&:hover': {
                                 backgroundColor: 'rgba(0,0,0,0.7)',
                             },
+                            textTransform: "none"
                         }}
+                        disableElevation
                     >
                         Close
                     </Button>
@@ -554,7 +569,9 @@ const TaskManagement = () => {
                             right: 8,
                             top: 8,
                             color: (theme) => theme.palette.grey[500],
+                            textTransform: "none"
                         }}
+                        disableElevation
                     >
                         ×
                     </Button>
@@ -566,17 +583,17 @@ const TaskManagement = () => {
                     {taskToTerminate && (
                         <Box mt={2}>
                             <Typography variant="subtitle2">Task Details:</Typography>
-                            <Typography>ID: {taskToTerminate._id}</Typography>
+                            <Typography>ID: {taskToTerminate.celery_task_id}</Typography>
                             <Typography>Status: {taskToTerminate.status}</Typography>
                             <Typography>Progress: {Math.round(taskToTerminate.progress || 0)}%</Typography>
                         </Box>
                     )}
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={handleCloseTerminateModal} color="primary">
+                    <Button onClick={handleCloseTerminateModal} color="primary" disableElevation sx={{ textTransform: "none" }}>
                         Cancel
                     </Button>
-                    <Button onClick={handleConfirmTerminate} color="error" variant="contained">
+                    <Button onClick={handleConfirmTerminate} color="error" variant="contained" disableElevation sx={{ textTransform: "none" }}>
                         Terminate
                     </Button>
                 </DialogActions>
