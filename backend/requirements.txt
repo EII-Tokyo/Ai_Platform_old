@@ -1,0 +1,9 @@
+fastapi[all]
+requests
+minio
+cython
+celery
+python-multipart 
+pymongo
+redis
+ultralytics

@@ -1,0 +1,56 @@
+{
+  "name": "material-cra-ts",
+  "version": "5.0.0",
+  "private": true,
+  "dependencies": {
+    "@dotlottie/react-player": "^1.6.19",
+    "@emotion/react": "^11.11.0",
+    "@emotion/styled": "^11.11.0",
+    "@lottiefiles/dotlottie-react": "^0.5.1",
+    "@mui/base": "^5.0.0-beta.40",
+    "@mui/icons-material": "^5.11.16",
+    "@mui/material": "^5.13.3",
+    "@mui/x-date-pickers-pro": "^7.0.0-beta.6",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@types/react-router-dom": "^5.3.3",
+    "@wojtekmaj/react-datetimerange-picker": "^5.5.0",
+    "axios": "^1.4.0",
+    "dayjs": "^1.11.10",
+    "echarts": "^5.4.2",
+    "lucide-react": "^0.429.0",
+    "react": "latest",
+    "react-color": "^2.19.3",
+    "react-device-detect": "^2.2.3",
+    "react-dom": "latest",
+    "react-router-dom": "^6.11.2",
+    "react-scripts": "latest",
+    "react-share": "^5.1.0",
+    "typescript": "latest",
+    "video.js": "7.20.0"
+  },
+  "scripts": {
+    "start": "PORT=3001 react-scripts start --env-file .env.development",
+    "build": "react-scripts build --env-file .env.production",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
+    "@types/react-color": "^3.0.6",
+    "@types/video.js": "^7.3.57",
+    "tailwindcss": "^3.3.2"
+  }
+}

@@ -1,0 +1,7 @@
+frontend/node_modules
+minio/
+volumes/
+test-data/
+mongo/
+docker-compose.yml
+backend/weights/
