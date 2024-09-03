@@ -231,7 +231,7 @@ def run_yolo_image(self, inserted_id, media_id, model_id, detect_class_indices, 
         model = YOLO(model_info['model_path'])
 
         # 进行预测
-        results = model.predict(local_filename, conf=conf, imgsz=imgsz, augment=augment, classes=detect_class_indices)
+        results = model.predict(local_filename, conf=conf, imgsz=imgsz, augment=augment, classes=detect_class_indices, device='cuda:0')
 
         # 处理结果
         im_array = results[0].plot(font_size=8, line_width=1)
@@ -295,7 +295,7 @@ def run_yolo_video(self, inserted_id, media_id, model_id, detect_class_indices, 
         out = cv2.VideoWriter(output_filename_relative_path, fourcc, fps, (imgsz[1], imgsz[0]))
 
         # 进行预测
-        results = model(local_filename, stream=True, conf=conf, imgsz=imgsz, augment=augment, classes=detect_class_indices)
+        results = model(local_filename, stream=True, conf=conf, imgsz=imgsz, augment=augment, classes=detect_class_indices, device='cuda:0')
 
         frame_count = 0
         total_frames = int(cv2.VideoCapture(local_filename).get(cv2.CAP_PROP_FRAME_COUNT))
