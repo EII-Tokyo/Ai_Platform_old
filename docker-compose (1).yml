@@ -1,0 +1,151 @@
+version: '3.5'
+
+name: yolotester-prod
+
+services:
+  flower:
+    image: mher/flower
+    ports:
+      - 5555:5555
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - FLOWER_PORT=5555
+    depends_on:
+      - redis
+
+  celery:
+    # image: ship:celery
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    command: python3 celery_worker.py
+    volumes:
+      - ./backend:/backend
+    environment:
+      - UDEV=1
+      - MINIO_ACCESS_KEY=VfjgF8DwbBQ4mmSppara
+      - MINIO_SECRET_KEY=5ZTSrIHfLptCtYBMapApQYuj8bkUroWxMs4pajI8
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [ gpu ]
+    runtime: nvidia
+
+  backend:
+    # image: lyl472324464/ship:backend-amd64
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8000"
+    command: python3 main.py
+    # command: /backend/start.sh
+    privileged: true
+    volumes:
+      - /dev:/dev
+      - /run/udev:/run/udev:ro
+      - ./backend:/backend
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    environment:
+      - UDEV=1
+      - MINIO_ACCESS_KEY=VfjgF8DwbBQ4mmSppara
+      - MINIO_SECRET_KEY=5ZTSrIHfLptCtYBMapApQYuj8bkUroWxMs4pajI8
+      # - LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1
+    depends_on:
+      # tritonserver:
+      #   condition: service_started
+      - mongo
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [ gpu ]
+    ipc: host
+    runtime: nvidia
+
+  frontend:
+    # image: ship:frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    volumes:
+      - ./frontend:/frontend
+    restart: always
+    # command: bash -c "nginx && yarn start"
+    command: bash -c 'nginx -g "daemon off;"'
+    ports:
+      - 80:80
+    depends_on:
+      - backend
+
+  minio:
+    image: quay.io/minio/minio
+    restart: always
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password
+      MINIO_SERVER_URL: http://minio:9000
+      # MINIO_BROWSER_REDIRECT_URL: http://localhost:9092
+      # MINIO_BROWSER_REDIRECT_URL: http://192.168.1.10/minio/ui
+    command: server --console-address ":9090" /data
+    ports:
+      - "9000"
+      # - "9090:9090"
+    volumes:
+      - ./minio/data:/data
+
+  loki:
+    image: grafana/loki:2.6.1
+    user: "$UID:$GID"
+    ports:
+      - "3100"
+    volumes:
+      # directory must be created first, with uid:gid 10001:10001
+      - ./volumes/loki:/loki
+
+  promtail:
+    image: grafana/promtail:2.6.1
+    volumes:
+      # custom config will read logs from the containers of
+      # this project
+      - ./promtail/promtail-config.yaml:/etc/promtail/config.yml
+      # to read container labels and logs
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers:/var/lib/docker/containers
+
+  # will be available at http://127.0.0.1:3000
+  # default credentials: admin/admin
+  grafana:
+    image: grafana/grafana:9.2.2
+    user: "$UID:$GID"
+    # ports:
+    #   - "3000:3000"
+    volumes:
+      # directory must be created first, with uid:gid 472:472
+      - ./volumes/grafana:/var/lib/grafana
+      # automatically configure the loki datasource
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini
+
+  redis:
+    image: redis:6.2.6
+    restart: always
+    ports:
+      - "6379"
+
+  mongo:
+    image: mongo:7.0.6
+    restart: always
+    ports:
+      - 27017:27017
+    volumes:
+      - ./mongo/data:/data/db
+    # healthcheck:
+    #   test: ["CMD", "mongo", "admin", "--eval", "db.stats()"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 3

@@ -8,6 +8,7 @@ import ImageViewer from "../pages/ImageViewer";
 import MobileIndex from "../mobilePages/Index";
 import ModelManagement from "../pages/Model";
 import MediaManagement from "../pages/Media";
+import Test from "../pages/Test"
 
 export function BrowserRoute() {
   const routes = useRoutes([
@@ -18,6 +19,7 @@ export function BrowserRoute() {
         { element: <TaskManagement />, index: true },
         { element: <MediaManagement />, path: 'Media' },
         { element: <ModelManagement />, path: 'Model' },
+        { element: <Test />, path: 'Test' },
       ],
     },
     {

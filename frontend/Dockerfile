@@ -19,7 +19,7 @@ COPY . /frontend
 WORKDIR /frontend
 RUN mkdir -p /var/www/html
 # RUN node -v
-# RUN yarn install
+RUN yarn install
 RUN yarn build
 RUN cp -r ./build/* /var/www/html
 # RUN rm /etc/nginx/conf.d/default.conf
