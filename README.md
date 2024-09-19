@@ -2,6 +2,7 @@
 
 - [AI platform](#ai-platform)
   - [Preparation](#preparation)
+  - [Docker command](#docker-command)
   - [Configuration](#configuration)
     - [Bucket \& Key](#bucket--key)
     - [Grafana](#grafana)
@@ -31,12 +32,30 @@
 
 5. [MongoDB Compass](https://www.mongodb.com/docs/compass/current/install)
 
+## Docker command
+
+1. start docker
+
+   ```bash
+   # start docker
+   sudo docker compose -f docker-compose-dev.yml up -d
+   ```
+
+2. stop docker
+
+   ```bash
+   # start docker
+   sudo docker compose -f docker-compose-dev.yml down
+   ```
+
+3. view the log
+
+   ```bash
+   sudo docker compose -f docker-compose-dev.yml logs -f promtail
+   ```
+
 ## Configuration
 
-```bash
-# start docker
-sudo docker compose -f docker-compose-dev.yml up
-```
 
 | Name     | Dev Port | Prod Port |
 | :----    | :---:    | :---:     |
