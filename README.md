@@ -8,6 +8,7 @@
   - [Usage](#usage)
     - [Add Model and upload image/video](#add-model-and-upload-imagevideo)
     - [write frontend code](#write-frontend-code)
+  - [Ref](#ref)
 
 ## Preparation
 
@@ -37,16 +38,16 @@
 sudo docker compose -f docker-compose-dev.yml up
 ```
 
-| Name     | Port  |
-| :----    | :---: |
-| backend  | 8008  |
-| frontend | 8002  |
-| minio    | 9092  |
-| flower   | 5556  |
-| loki     | 3100  |
-| grafana  | 3001  |
-| redis    | 6379  |
-| mongo    | 27018 |
+| Name     | Dev Port | Prod Port |
+| :----    | :---:    | :---:     |
+| frontend | 8002     | 80        |
+| backend  | 8008     | 8000      |
+| minio    | 9092     | 9000      |
+| flower   | 5556     | 5555      |
+| loki     | 3100     | 3100      |
+| redis    | 6379     | 6379      |
+| mongo    | 27018    | 27017     |
+| grafana  | 3001     | -         |
 
 ### Bucket & Key 
 
@@ -145,3 +146,8 @@ sudo docker compose -f docker-compose-dev.yml up
    ```bash
    cd frontend && yarn && yarn start
    ```
+
+## Ref
+
+1. [MUI](https://mui.com/)
+2. [tailwindcss](https://tailwindcss.com/)
