@@ -37,8 +37,11 @@
 1. start docker
 
    ```bash
-   # start docker
+   # start dev docker
    sudo docker compose -f docker-compose-dev.yml up -d
+
+   # start prod docker
+   sudo docker compose -f docker-compose-prod.yml up --build -d
    ```
 
 2. stop docker
@@ -57,16 +60,16 @@
 ## Configuration
 
 
-| Name     | Dev Port | Prod Port |
-| :----    | :---:    | :---:     |
-| frontend | 8002     | 80        |
-| backend  | 8008     | 8000      |
-| minio    | 9092     | 9000      |
-| flower   | 5556     | 5555      |
-| loki     | 3100     | 3100      |
-| redis    | 6379     | 6379      |
-| mongo    | 27018    | 27017     |
-| grafana  | 3001     | -         |
+| Name     | Dev Port | Prod Port | usr/pass      |
+| :----    | :---:    | :---:     | :---:         |
+| frontend | 8002     | 80        | eii/123456    |
+| backend  | 8008     | 8000      |               |
+| minio    | 9092     | -         | admin/password|
+| flower   | 5556     | 5555      |               |
+| loki     | 3100     | 3100      | admin/admin   |
+| redis    | 6379     | 6379      |               |
+| mongo    | 27018    | 27017     |               |
+| grafana  | 3001     | -         |               |
 
 ### Bucket & Key 
 

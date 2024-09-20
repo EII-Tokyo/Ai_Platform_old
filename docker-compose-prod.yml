@@ -1,6 +1,6 @@
 version: '3.5'
 
-name: yolotester-prod
+name: yolotester_prod
 
 services:
   flower:
@@ -24,8 +24,8 @@ services:
       - ./backend:/backend
     environment:
       - UDEV=1
-      - MINIO_ACCESS_KEY=VfjgF8DwbBQ4mmSppara
-      - MINIO_SECRET_KEY=5ZTSrIHfLptCtYBMapApQYuj8bkUroWxMs4pajI8
+      - MINIO_ACCESS_KEY=WJRu4rPsUsft64s5TNFy
+      - MINIO_SECRET_KEY=waKvd9A2sWUzRE088VXk8fDTL6KBKtjdsXdYHia4
     deploy:
       resources:
         reservations:
@@ -52,8 +52,8 @@ services:
       - /dev/bus/usb:/dev/bus/usb
     environment:
       - UDEV=1
-      - MINIO_ACCESS_KEY=VfjgF8DwbBQ4mmSppara
-      - MINIO_SECRET_KEY=5ZTSrIHfLptCtYBMapApQYuj8bkUroWxMs4pajI8
+      - MINIO_ACCESS_KEY=WJRu4rPsUsft64s5TNFy
+      - MINIO_SECRET_KEY=waKvd9A2sWUzRE088VXk8fDTL6KBKtjdsXdYHia4
       # - LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1
     depends_on:
       # tritonserver:
@@ -94,7 +94,7 @@ services:
     command: server --console-address ":9090" /data
     ports:
       - "9000"
-      # - "9090:9090"
+      - "9090:9090"
     volumes:
       - ./minio/data:/data
 
