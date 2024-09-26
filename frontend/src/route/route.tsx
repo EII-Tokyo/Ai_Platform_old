@@ -19,7 +19,7 @@ export function BrowserRoute() {
         { element: <TaskManagement />, index: true },
         { element: <MediaManagement />, path: 'Media' },
         { element: <ModelManagement />, path: 'Model' },
-        { element: <Test />, path: 'Test' },
+        // { element: <Test />, path: 'Test' },
       ],
     },
     {

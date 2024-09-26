@@ -24,8 +24,8 @@ services:
       - ./backend:/backend
     environment:
       - UDEV=1
-      - MINIO_ACCESS_KEY=WJRu4rPsUsft64s5TNFy
-      - MINIO_SECRET_KEY=waKvd9A2sWUzRE088VXk8fDTL6KBKtjdsXdYHia4
+      - MINIO_ACCESS_KEY=tvl0IC3ACVbAYotfTPgq
+      - MINIO_SECRET_KEY=qBLYfpiVGUGNvuAsGzrENzjdfVWz6Yn19UUvOgm3
     deploy:
       resources:
         reservations:
@@ -52,8 +52,8 @@ services:
       - /dev/bus/usb:/dev/bus/usb
     environment:
       - UDEV=1
-      - MINIO_ACCESS_KEY=WJRu4rPsUsft64s5TNFy
-      - MINIO_SECRET_KEY=waKvd9A2sWUzRE088VXk8fDTL6KBKtjdsXdYHia4
+      - MINIO_ACCESS_KEY=tvl0IC3ACVbAYotfTPgq
+      - MINIO_SECRET_KEY=qBLYfpiVGUGNvuAsGzrENzjdfVWz6Yn19UUvOgm3
       # - LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1
     depends_on:
       # tritonserver:
