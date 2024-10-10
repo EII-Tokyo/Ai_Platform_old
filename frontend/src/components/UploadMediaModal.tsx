@@ -3,148 +3,150 @@ import {
     Modal,
     Box,
     Typography,
-    TextField,
     Button,
     CircularProgress,
     Snackbar,
     Alert,
-    FormControl,
-    InputLabel,
-    Select,
-    MenuItem
+    LinearProgress
 } from '@mui/material';
+import { Media } from '../interface';
+import axios from 'axios';
 
 interface UploadMediaModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onUpload: () => void;
+    onUpload: (uploadedFiles: Media[]) => void;
 }
 
 const UploadMediaModal: React.FC<UploadMediaModalProps> = ({ isOpen, onClose, onUpload }) => {
-    const [mediaData, setMediaData] = useState({
-        file: null as File | null,
-        name: '',
-        description: '',
+    const [mediaData, setMediaData] = useState<{ files: File[]; mediaType: 'image' | 'video' }>({
+        files: [],
         mediaType: 'image'
     });
     const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [currentFileIndex, setCurrentFileIndex] = useState(0);
+    const [uploadProgress, setUploadProgress] = useState(0);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files ? e.target.files[0] : null;
-        if (file) {
-            const fileType = file.type.split('/')[0];
-            if (fileType === 'image' || fileType === 'video' || file.name.endsWith('.avi')) {
-                setMediaData({
-                    ...mediaData,
-                    file: file,
-                    mediaType: fileType === 'image' ? 'image' : 'video'
-                });
-                setError(null);
-            } else {
-                setError('Invalid file type. Please select an image or video file.');
-                e.target.value = ''; // Reset the file input
-            }
+        const files = e.target.files ? Array.from(e.target.files) : [];
+        const validFiles = files.filter(file => /^(image|video)\//.test(file.type) || file.name.endsWith('.avi'));
+
+        if (validFiles.length > 0) {
+            setMediaData({
+                files: validFiles,
+                mediaType: validFiles[0].type.startsWith('image') ? 'image' : 'video'
+            });
+            setError(null);
+        } else {
+            setError('Invalid file type. Please select an image or video file.');
+            e.target.value = ''; // Reset the file input
         }
     };
 
     const handleUpload = async () => {
-        if (!mediaData.file) {
-            setError('Please provide a file.');
+        if (mediaData.files.length === 0) {
+            setError('Please provide at least one file.');
             return;
         }
 
         setIsUploading(true);
         setError(null);
+        setCurrentFileIndex(0);
 
-        const formData = new FormData();
-        formData.append('file', mediaData.file);
-        formData.append('name', mediaData.name);
-        formData.append('description', mediaData.description);
+        for (let i = 0; i < mediaData.files.length; i++) {
+            const file = mediaData.files[i];
+            const formData = new FormData();
+            formData.append('file', file);
 
-        try {
-            const response = await fetch(`${process.env.REACT_APP_API_URL}/api/upload_file`, {
-                method: 'POST',
-                body: formData,
-            });
+            try {
+                const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/upload_file`, formData, {
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    onUploadProgress: (progressEvent) => {
+                        if (progressEvent.total) {
+                            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                            setUploadProgress(progress);
+                        }
+                    }
+                });
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                if (response.status !== 200) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const uploadedFile: Media = response.data;
+                onUpload([uploadedFile]);
+                setCurrentFileIndex(i + 1);
+            } catch (error) {
+                console.error('Upload failed:', error);
+                setError('Upload failed. Please try again.');
+                break;
             }
-
-            const result = await response.json();
-            console.log('Upload successful:', result);
-
-            // Reset form and close modal
-            setMediaData({
-                file: null,
-                name: '',
-                description: '',
-                mediaType: 'image'
-            });
-            onUpload(); // Trigger refetch of media items
-            onClose(); // Close the modal
-        } catch (error) {
-            console.error('Upload failed:', error);
-            setError('Upload failed. Please try again.');
-        } finally {
-            setIsUploading(false);
         }
+
+        setIsUploading(false);
+        setUploadProgress(0);
+        handleClose();
+    };
+
+    const handleClose = () => {
+        setMediaData({ files: [], mediaType: 'image' });
+        setError(null);
+        setCurrentFileIndex(0);
+        setUploadProgress(0);
+        onClose();
     };
 
     return (
-        <Modal open={isOpen} onClose={onClose}>
-            <Box className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white p-8 rounded-lg w-[80vw] max-h-[90vh] overflow-y-auto">
-                <Typography variant="h6" component="h2" className="mb-6 text-2xl font-bold">
+        <Modal open={isOpen} onClose={handleClose}>
+            <Box sx={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                bgcolor: 'background.paper',
+                p: 4,
+                borderRadius: 2,
+                width: '80vw',
+                maxHeight: '90vh',
+                overflowY: 'auto'
+            }}>
+                <Typography variant="h6" component="h2" gutterBottom>
                     Upload Media
                 </Typography>
-                <div className='flex flex-col gap-8'>
+                <div className='flex flex-col gap-4'>
                     <div className='flex justify-between items-center'>
-                        <div className='basis-1/4 text-gray-700 text-sm'>File</div>
+                        <Typography variant="body2" sx={{ flexBasis: '25%' }}>Files</Typography>
                         <input
-                            className='basis-3/4'
                             type="file"
                             accept="image/*,video/*,.avi"
                             onChange={handleFileChange}
                             disabled={isUploading}
+                            style={{ flexBasis: '75%' }}
+                            multiple
                         />
                     </div>
-                    {/* <div className='flex justify-between items-center'>
-                        <div className='basis-1/4 text-gray-700 text-sm'>Name</div>
-                        <TextField
-                            className='basis-3/4'
-                            value={mediaData.name}
-                            onChange={(e) => setMediaData({ ...mediaData, name: e.target.value })}
-                            fullWidth
-                            disabled={isUploading}
-                            sx={{ "& .MuiOutlinedInput-input": { padding: "8.5px 16px" } }}
-                        />
-                    </div>
-                    <div className='flex justify-between items-center'>
-                        <div className='basis-1/4 text-gray-700 text-sm'>Description</div>
-                        <TextField
-                            className='basis-3/4'
-                            value={mediaData.description}
-                            onChange={(e) => setMediaData({ ...mediaData, description: e.target.value })}
-                            fullWidth
-                            multiline
-                            rows={3}
-                            disabled={isUploading}
-                        />
-                    </div> */}
                 </div>
-                <Box className="mt-4 flex items-center justify-end mb-6">
+                {isUploading && (
+                    <Box sx={{ mt: 2 }}>
+                        <LinearProgress variant="determinate" value={uploadProgress} />
+                        <Typography variant="body2" align="center" sx={{ mt: 1 }}>
+                            Uploading file {currentFileIndex + 1} of {mediaData.files.length} ({uploadProgress}%)
+                        </Typography>
+                    </Box>
+                )}
+                <Box className="mt-4 flex items-center justify-end">
                     <Button
                         onClick={handleUpload}
                         variant="contained"
                         color="primary"
-                        disabled={isUploading || !mediaData.file }
-                        disableElevation
-                        sx={{ textTransform: "none" }}
+                        disabled={isUploading || mediaData.files.length === 0}
+                        sx={{ textTransform: "none", mr: 2 }}
                     >
-                        {isUploading ? 'Uploading...' : 'Upload'}
+                        {isUploading ? <CircularProgress size={24} /> : 'Upload'}
                     </Button>
-                    {isUploading && <CircularProgress size={24} className="ml-2" />}
                 </Box>
                 <Snackbar open={!!error} autoHideDuration={6000} onClose={() => setError(null)} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
                     <Alert onClose={() => setError(null)} severity="error" sx={{ width: '100%' }}>

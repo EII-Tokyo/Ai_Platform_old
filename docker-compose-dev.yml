@@ -1,5 +1,3 @@
-version: '3.5'
-
 name: yolotester_dev
 
 services:
@@ -24,8 +22,8 @@ services:
       - ./backend:/backend
     environment:
       - UDEV=1
-      - MINIO_ACCESS_KEY=KhkhebuzRm8oRRv6CQKK
-      - MINIO_SECRET_KEY=VhuL8ERfye8rDOWmGMxacS2sYZow5iyOdL3W3sGU
+      - MINIO_ACCESS_KEY=CcN6vNP3IhhYJGXxRFA8
+      - MINIO_SECRET_KEY=laifgTSxOuMbnSe0eNXRLN1C6DzOHNkQEJ4a6Wo6
     deploy:
       resources:
         reservations:
@@ -52,8 +50,8 @@ services:
       - /dev/bus/usb:/dev/bus/usb
     environment:
       - UDEV=1
-      - MINIO_ACCESS_KEY=KhkhebuzRm8oRRv6CQKK
-      - MINIO_SECRET_KEY=VhuL8ERfye8rDOWmGMxacS2sYZow5iyOdL3W3sGU
+      - MINIO_ACCESS_KEY=CcN6vNP3IhhYJGXxRFA8
+      - MINIO_SECRET_KEY=laifgTSxOuMbnSe0eNXRLN1C6DzOHNkQEJ4a6Wo6
       # - LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1
     depends_on:
       # tritonserver:
