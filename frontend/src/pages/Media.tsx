@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
     Button, CircularProgress, Pagination, Typography, Box, Chip, Checkbox,
@@ -8,14 +8,16 @@ import {
 import { ITaskRequest, Media, Model } from '../interface';
 import UploadMediaModal from '../components/UploadMediaModal';
 import RunWithModelModal from '../components/RunWithModelModal';
+import UploadFolderModal from '../components/UploadFolderModal';
 
 const MediaManagement = () => {
     const [mediaItems, setMediaItems] = useState<Media[]>([]);
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(10);
     const [totalPages, setTotalPages] = useState(1);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(false);
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+    const [isUploadFolderModalOpen, setIsUploadFolderModalOpen] = useState(false);
     const [selectedMedias, setSelectedMedias] = useState<string[]>([]);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
@@ -23,6 +25,43 @@ const MediaManagement = () => {
     const [isRunWithModelModalOpen, setIsRunWithModelModalOpen] = useState(false);
     const [selectedMedia, setSelectedMedia] = useState<Media | null>(null);
     const [models, setModels] = useState<Model[]>([]);
+
+    const fetchMediaItems = useCallback(async () => {       
+        setIsLoading(true);
+        try {
+            const response = await fetch(`${process.env.REACT_APP_API_URL}/api/medias?limit=${limit}&page_num=${page}`);
+            if (response.ok) {
+                const data = await response.json();
+                setMediaItems(data.medias);
+                setTotalPages(data.total_pages);
+            } else {
+                console.error('Failed to fetch media items');
+            }
+        } catch (error) {
+            console.error('Error fetching media items:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [page, limit]);
+
+    const fetchModels = useCallback(async () => {
+        try {
+            const response = await fetch(`${process.env.REACT_APP_API_URL}/api/models`);
+            if (response.ok) {
+                const data = await response.json();
+                setModels(data);
+            } else {
+                console.error('Failed to fetch models');
+            }
+        } catch (error) {
+            console.error('Error fetching models:', error);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchMediaItems();
+        fetchModels();
+    }, [fetchMediaItems, fetchModels]);
 
     const handleRunWithModel = (media: Media) => {
         setSelectedMedia(media);
@@ -34,7 +73,6 @@ const MediaManagement = () => {
 
         try {
             setIsLoading(true);
-            console.log(params);
             const response = await fetch(`${process.env.REACT_APP_API_URL}/api/run_yolo`, {
                 method: 'POST',
                 headers: {
@@ -48,51 +86,11 @@ const MediaManagement = () => {
             }
 
             setIsRunWithModelModalOpen(false);
-            setIsLoading(false);
             window.location.href = '/';
         } catch (error) {
             console.error('Error running task:', error);
         } finally {
             setIsLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        const timer = setInterval(() => {
-            fetchMediaItems();
-        }, 2000);
-        return () => clearInterval(timer);
-    }, []);
-
-    useEffect(() => {
-        setIsLoading(true);
-        fetchMediaItems();
-        fetchModels();
-        setIsLoading(false);
-    }, [page, limit]);
-
-    const fetchModels = async () => {
-        try {
-            const response = await fetch(`${process.env.REACT_APP_API_URL}/api/models`);
-            if (response.ok) {
-                const data = await response.json();
-                setModels(data);
-            } else {
-                console.error('Failed to fetch models');
-            }
-        } catch (error) {
-            console.error('Error fetching models:', error);
-        }
-    };
-
-    const fetchMediaItems = async () => {       
-        try {
-            const response = await fetch(`${process.env.REACT_APP_API_URL}/api/medias?limit=${limit}&page_num=${page}`);
-            const data = await response.json();
-            setMediaItems(data.medias);
-            setTotalPages(data.total_pages);
-        } catch (error) {
-            console.error('Error fetching media items:', error);
         }
     };
 
@@ -108,11 +106,8 @@ const MediaManagement = () => {
         const h = Math.floor(seconds / 3600);
         const m = Math.floor((seconds % 3600) / 60);
         const s = Math.floor(seconds % 60);
-        
-        const pad = (num: number): string => num.toString().padStart(2, '0');
-        
-        return `${pad(h)}:${pad(m)}:${pad(s)}`;
-    }
+        return [h, m, s].map(num => num.toString().padStart(2, '0')).join(':');
+    };
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -137,11 +132,7 @@ const MediaManagement = () => {
     };
 
     const handleSelectAllMedia = (event: React.ChangeEvent<HTMLInputElement>) => {
-        if (event.target.checked) {
-            setSelectedMedias(mediaItems.map(item => item._id));
-        } else {
-            setSelectedMedias([]);
-        }
+        setSelectedMedias(event.target.checked ? mediaItems.map(item => item._id) : []);
     };
 
     const handleDeleteMedias = async () => {
@@ -154,7 +145,6 @@ const MediaManagement = () => {
                 body: JSON.stringify(selectedMedias),
             });
             if (response.ok) {
-                const result = await response.json();
                 fetchMediaItems();
                 setSelectedMedias([]);
             } else {
@@ -162,8 +152,9 @@ const MediaManagement = () => {
             }
         } catch (error) {
             console.error('Error deleting media items:', error);
+        } finally {
+            setIsDeleteModalOpen(false);
         }
-        setIsDeleteModalOpen(false);
     };
 
     const handlePreviewMedia = (media: Media) => {
@@ -171,36 +162,34 @@ const MediaManagement = () => {
         setIsPreviewModalOpen(true);
     };
 
-    const CircularProgressWithLabel = (props: { value: number; status: string }) => {
-        return (
-            <Box position="relative" display="inline-flex">
-                <CircularProgress
-                    variant="determinate"
-                    value={props.value}
-                    color={getStatusColor(props.status) as "success" | "error" | "warning" | "info" | "inherit"}
-                />
-                <Box
-                    top={0}
-                    left={0}
-                    bottom={0}
-                    right={0}
-                    position="absolute"
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
-                >
-                    <Typography variant="caption" component="div" color="textSecondary">
-                        {`${Math.round(props.value)}%`}
-                    </Typography>
-                </Box>
+    const CircularProgressWithLabel = ({ value, status }: { value: number; status: string }) => (
+        <Box position="relative" display="inline-flex">
+            <CircularProgress
+                variant="determinate"
+                value={value}
+                color={getStatusColor(status) as "success" | "error" | "warning" | "info" | "inherit"}
+            />
+            <Box
+                top={0}
+                left={0}
+                bottom={0}
+                right={0}
+                position="absolute"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+            >
+                <Typography variant="caption" component="div" color="textSecondary">
+                    {`${Math.round(value)}%`}
+                </Typography>
             </Box>
-        );
-    };
+        </Box>
+    );
 
     return (
         <div className="p-4">
             <div className="flex justify-between items-center mb-4">
-                <div className="text-xl font-semibold">Media Management</div>
+                <Typography variant="h5" component="div">Media Management</Typography>
                 <div>
                     {selectedMedias.length > 0 && (
                         <Button 
@@ -222,12 +211,21 @@ const MediaManagement = () => {
                     >
                         Upload File
                     </Button>
+                    <Button 
+                        variant="contained" 
+                        color="secondary" 
+                        onClick={() => setIsUploadFolderModalOpen(true)}
+                        disableElevation
+                        sx={{ ml: 2, textTransform: "none" }}
+                    >
+                        Upload Folder
+                    </Button>
                 </div>
             </div>
             {isLoading ? (
-                <div className="flex justify-center items-center h-64">
+                <Box display="flex" justifyContent="center" alignItems="center" height="64">
                     <CircularProgress />
-                </div>
+                </Box>
             ) : mediaItems.length === 0 ? (
                 <Paper className="p-4 text-center">
                     <Typography variant="h6">No media items found</Typography>
@@ -250,9 +248,9 @@ const MediaManagement = () => {
                                 <TableCell>Media Type</TableCell>
                                 <TableCell>Resolution</TableCell>
                                 <TableCell>Duration</TableCell>
-                                <TableCell>Origin File Size</TableCell>
-                                <TableCell>Origin Content Type</TableCell>
-                                <TableCell>Origin Vcodec</TableCell>
+                                <TableCell>File Size</TableCell>
+                                <TableCell>Content Type</TableCell>
+                                <TableCell>Vcodec</TableCell>
                                 <TableCell>Upload Time</TableCell>
                                 <TableCell>Status</TableCell>
                                 <TableCell>Progress</TableCell>
@@ -284,7 +282,7 @@ const MediaManagement = () => {
                                             />
                                         )}
                                     </TableCell>
-                                    <TableCell>{media.original_filename}</TableCell>                                   
+                                    <TableCell>{media.original_filename}</TableCell>                                  
                                     <TableCell>
                                         <Chip
                                             label={media.media_type}
@@ -328,17 +326,23 @@ const MediaManagement = () => {
                 </TableContainer>
             )}
 
-            <div className="flex justify-end mt-4">
+            <Box display="flex" justifyContent="end" mt={4}>
                 <Pagination 
                     count={totalPages} 
                     page={page} 
                     onChange={(_, value) => setPage(value)} 
                 />
-            </div>
+            </Box>
 
             <UploadMediaModal
                 isOpen={isUploadModalOpen}
                 onClose={() => setIsUploadModalOpen(false)}
+                onUpload={fetchMediaItems}
+            />
+
+            <UploadFolderModal
+                isOpen={isUploadFolderModalOpen}
+                onClose={() => setIsUploadFolderModalOpen(false)}
                 onUpload={fetchMediaItems}
             />
 
