@@ -16,10 +16,10 @@ interface RunWithModelModalProps {
 const RunWithModelModal: React.FC<RunWithModelModalProps> = ({ isOpen, onClose, media, models, onRunTask }) => {
     const [params, setParams] = useState<ITaskRequest>({
         media_id: media ? media._id : '',
-        media_type: media ? media.media_type : '',       
+        media_type: media ? media.media_type : '',
         model_id: '',
         conf: 0.25,
-        detect_classes: [] as string[],
+        detect_classes: ['smoke', 'fire'],
         detect_class_indices: [] as number[],
         width: 1920,
         height: 1088,
@@ -27,6 +27,7 @@ const RunWithModelModal: React.FC<RunWithModelModalProps> = ({ isOpen, onClose, 
     });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [allSelected, setAllSelected] = useState(false);
 
     useEffect(() => {
         if (media) {
@@ -43,7 +44,7 @@ const RunWithModelModal: React.FC<RunWithModelModalProps> = ({ isOpen, onClose, 
             setParams(prev => ({
                 ...prev,
                 model_id: models[0]._id,
-                detect_classes: models[0].default_detect_classes
+                detect_classes: ['smoke', 'fire']
             }));
         }
     }, [models]);
@@ -53,7 +54,7 @@ const RunWithModelModal: React.FC<RunWithModelModalProps> = ({ isOpen, onClose, 
         setParams(prev => ({
             ...prev,
             model_id: modelId,
-            detect_classes: selectedModel ? selectedModel.default_detect_classes : []
+            detect_classes: selectedModel ? ['smoke', 'fire'] : []
         }));
     };
 
@@ -81,6 +82,24 @@ const RunWithModelModal: React.FC<RunWithModelModalProps> = ({ isOpen, onClose, 
                 detect_classes: newClasses
             };
         });
+    };
+
+    const handleSelectAll = () => {
+        if (allSelected) {
+            setParams(prev => ({
+                ...prev,
+                detect_classes: []
+            }));
+        } else {
+            const selectedModel = models.find(model => model._id === params.model_id);
+            if (selectedModel) {
+                setParams(prev => ({
+                    ...prev,
+                    detect_classes: selectedModel.classes
+                }));
+            }
+        }
+        setAllSelected(!allSelected);
     };
 
     const handleRunTask = async () => {
@@ -140,6 +159,18 @@ const RunWithModelModal: React.FC<RunWithModelModalProps> = ({ isOpen, onClose, 
                             </div>
                             <div className='flex justify-between'>
                                 <div className='basis-1/4 text-gray-700 text-sm'>Detect Classes</div>
+                                <div className='basis-1/10 gap-1 flex-wrap'>
+                                    <FormControlLabel
+                                        control={
+                                            <Checkbox
+                                                checked={allSelected}
+                                                onChange={handleSelectAll}
+                                                disabled={isLoading}
+                                            />
+                                        }
+                                        label={allSelected ? 'Unselect All' : 'Select All'}
+                                    />
+                                </div>
                                 <div className='basis-3/4 flex gap-1 flex-wrap'>
                                     {selectedModel.classes.map(className => (
                                         <FormControlLabel
@@ -152,8 +183,9 @@ const RunWithModelModal: React.FC<RunWithModelModalProps> = ({ isOpen, onClose, 
                                                 />
                                             }
                                             label={className}
+                                            className="w-1/4"
                                         />
-                                    ))}
+                                        ))}
                                 </div>
                             </div>
                         </>

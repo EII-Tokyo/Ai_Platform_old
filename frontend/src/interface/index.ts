@@ -148,13 +148,16 @@ export interface Media {
   _id: string;
   name: string;
   description: string;
+  parent_id?: string | null;
+  full_path?: string | null;
+  file_lists?: string[]; // 保存当前文件夹下所有文件的名称
   original_filename: string;
   minio_filename: string;
   file_size: number;
   content_type: string;
   vcodec: string;
   upload_time: number;
-  media_type: "image" | "video";
+  media_type: "image" | "video" | "folder";
   width: number;
   height: number;
   duration: number;

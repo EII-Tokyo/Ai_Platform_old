@@ -14,6 +14,24 @@ import cv2
 import io, json
 from minio import Minio
 import subprocess
+import logging
+import logging_loki
+
+# Loki 配置
+loki_handler = logging_loki.LokiHandler(
+    url="http://loki:3100/loki/api/v1/push",  # 替换为你的 Loki 实例地址
+    tags={"app": "yolotester_dev-backend-1"},
+    version="1",
+)
+
+# 清空日志处理器的旧消息
+loki_handler.flush()
+
+formatter = logging.Formatter('%(asctime)s - %(filename)s : %(funcName)s : [%(lineno)d] \n%(message)s')
+loki_handler.setFormatter(formatter)
+logger = logging.getLogger('my_log')
+logger.addHandler(loki_handler)
+logger.setLevel(logging.DEBUG)
 
 # 创建MongoDB客户端
 mongo_client = MongoClient('mongodb://mongo:27017/')
@@ -208,7 +226,7 @@ def convert_video(self, video_id):
 
 @app.task(base=AbortableTask, bind=True, name='run_yolo_image')
 def run_yolo_image(self, inserted_id, media_id, model_id, detect_class_indices, conf=0.25, imgsz=(1088, 1920), augment=False):
-    print(f"开始处理照片 {media_id}")
+    logger.debug(f"开始处理照片 {media_id}")
     try:
         media_info = media_collection.find_one({'_id': ObjectId(media_id)})
         if not media_info:
@@ -225,6 +243,7 @@ def run_yolo_image(self, inserted_id, media_id, model_id, detect_class_indices, 
         unique_filename = f"{self.request.id}{file_extension}"
         local_filename = f"/tmp/{unique_filename}"
         minio_client.fget_object("yolo-files", minio_filename, local_filename)
+        logger.debug(f'local_filename : {local_filename}')
 
         # 加载YOLO模型
         model_info = model_collection.find_one({'_id': ObjectId(model_id)})

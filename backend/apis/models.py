@@ -12,11 +12,15 @@ router = APIRouter()
 class ModelCreate(BaseModel):
     name: str
     description: str
+    class Config:
+        protected_namespaces = ()
 
 class ModelUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     default_detect_classes: Optional[List[str]] = None
+    class Config:
+        protected_namespaces = ()
 
 class ModelResponse(BaseModel):
     id: str = Field(..., alias="_id")
@@ -27,7 +31,8 @@ class ModelResponse(BaseModel):
     default_detect_classes: List[str]
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
+        protected_namespaces = ()
 
 def save_upload_file(upload_file: UploadFile, destination: str):
     try:

@@ -1,14 +1,5 @@
 import React, { useState } from 'react';
-import {
-    Modal,
-    Box,
-    Typography,
-    Button,
-    CircularProgress,
-    Snackbar,
-    Alert,
-    LinearProgress
-} from '@mui/material';
+import { Dialog, DialogActions, DialogContent, DialogTitle, Button, Input, LinearProgress, Typography } from '@mui/material';
 import { Media } from '../interface';
 import axios from 'axios';
 
@@ -16,146 +7,195 @@ interface UploadMediaModalProps {
     isOpen: boolean;
     onClose: () => void;
     onUpload: (uploadedFiles: Media[]) => void;
+    currentPath: string;
+    currentFolderId: string;
 }
 
-const UploadMediaModal: React.FC<UploadMediaModalProps> = ({ isOpen, onClose, onUpload }) => {
-    const [mediaData, setMediaData] = useState<{ files: File[]; mediaType: 'image' | 'video' }>({
-        files: [],
-        mediaType: 'image'
+const UploadMediaModal: React.FC<UploadMediaModalProps> = ({ isOpen, onClose, onUpload , currentPath, currentFolderId}) => {
+  const [open, setOpen] = useState(false);
+  const [progress, setProgress] = useState<number>(0); // 进度状态
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleClickOpen = () => {
+    setOpen(true);
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+    setProgress(0); // 重置进度
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    const validFiles = Array.from(files).filter((file) => {
+      const validTypes = ["image/", "video/", ".avi"];
+      const fileType = file.type;
+      const fileName = file.name;
+
+      // 检查文件类型是否合法
+      if (
+        validTypes.some(
+          (type) => fileType.startsWith(type) || fileName.endsWith(".avi")
+        )
+      ) {
+        return true; // 合法文件
+      } else {
+        console.error(`${fileName} 是不合法的文件类型`);
+        return false; // 不合法文件
+      }
     });
-    const [isUploading, setIsUploading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [currentFileIndex, setCurrentFileIndex] = useState(0);
-    const [uploadProgress, setUploadProgress] = useState(0);
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files ? Array.from(e.target.files) : [];
-        const validFiles = files.filter(file => /^(image|video)\//.test(file.type) || file.name.endsWith('.avi'));
+    if (validFiles.length > 0) {
+      setIsUploading(true); // 开始上传状态
+      uploadFiles(validFiles); // 开始上传文件
+    } else {
+      e.target.value = ""; // Reset the file input
+    }
+  };
 
-        if (validFiles.length > 0) {
-            setMediaData({
-                files: validFiles,
-                mediaType: validFiles[0].type.startsWith('image') ? 'image' : 'video'
-            });
-            setError(null);
-        } else {
-            setError('Invalid file type. Please select an image or video file.');
-            e.target.value = ''; // Reset the file input
+  // 获取预签名 URL
+  const getPresignedUrls = async (
+    fileNames: string[]
+  ): Promise<{ [key: string]: string }> => {
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_API_URL}/api/generate_presigned_urls/`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ files: fileNames }),
         }
-    };
+      );
 
-    const handleUpload = async () => {
-        if (mediaData.files.length === 0) {
-            setError('Please provide at least one file.');
-            return;
-        }
+      if (!response.ok) {
+        throw new Error(`API responded with status ${response.status}`);
+      }
 
-        setIsUploading(true);
-        setError(null);
-        setCurrentFileIndex(0);
+      const data = await response.json();
+      return data.presigned_urls;
+    } catch (error) {
+      console.error("Error fetching presigned URLs:", error);
+      throw error;
+    }
+  };
 
-        for (let i = 0; i < mediaData.files.length; i++) {
-            const file = mediaData.files[i];
-            const formData = new FormData();
-            formData.append('file', file);
+  const uploadFiles = async (files: File[]) => {
+    const totalFiles = files.length; // 使用到 totalFiles
 
+    // 获取所有文件名
+    const fileNames = files.map((file) => (currentPath + '/' + file.name).replace(/^\/+/, ''));
+
+    // 获取预签名 URL
+    const presignedUrls = await getPresignedUrls(fileNames);
+
+    // 逐個上传文件
+    let uploadedCount = 0;
+    const promises = files.map(async (file) => {
+      const minio_filename = (currentPath + '/' + file.name).replace(/^\/+/, '')
+      const presignedUrl = presignedUrls[minio_filename];
+
+      if (presignedUrl) {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", presignedUrl, true);
+
+        xhr.onload = async () => {
+          // 成功返回
+          if (xhr.status === 200) {
+            uploadedCount++;
+            const progressValue = Math.min((uploadedCount / totalFiles) * 100, 100);
+            setProgress(progressValue);
+            if (uploadedCount === files.length) {
+                setIsUploading(false); // 设置上传完成状态
+            }
+            
+            // 如果上传完成，调用远程异步 API
             try {
-                const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/upload_file`, formData, {
+                console.log(file)
+                const metadata = {
+                    name: file.name,         // 文件名
+                    parent_id: currentFolderId, // parent文件的ID
+                    full_path: currentPath,
+                    type: file.type,         // 文件类型
+                    size: file.size,         // 文件大小
+                    lastModified: file.lastModified,  // 上次修改时间
+                    minio_filename: minio_filename, // minio文件地址
+                  };
+
+                // 调用异步 API 并等待响应
+                const upload_response = await axios.post(`${process.env.REACT_APP_API_URL}/api/upload_file`, metadata, {
                     headers: {
                         'Accept': 'application/json'
                     },
-                    onUploadProgress: (progressEvent) => {
-                        if (progressEvent.total) {
-                            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-                            setUploadProgress(progress);
-                        }
-                    }
                 });
 
-                if (response.status !== 200) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                if (upload_response.status !== 200) {
+                    throw new Error(`HTTP error! status: ${upload_response.status}`);
                 }
 
-                const uploadedFile: Media = response.data;
-                onUpload([uploadedFile]);
-                setCurrentFileIndex(i + 1);
-            } catch (error) {
-                console.error('Upload failed:', error);
-                setError('Upload failed. Please try again.');
-                break;
-            }
-        }
+              } catch (error) {
+                console.error("远程API调用出错:", error);
+              }
+          }
+        };
 
-        setIsUploading(false);
-        setUploadProgress(0);
-        handleClose();
-    };
+        xhr.onerror = () => {
+          console.error("上传出错");
+        };
 
-    const handleClose = () => {
-        setMediaData({ files: [], mediaType: 'image' });
-        setError(null);
-        setCurrentFileIndex(0);
-        setUploadProgress(0);
-        onClose();
-    };
+        xhr.send(file);
+      } else {
+        console.error("找不到预签名 URL");
+      }
+    });
 
-    return (
-        <Modal open={isOpen} onClose={handleClose}>
-            <Box sx={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                bgcolor: 'background.paper',
-                p: 4,
-                borderRadius: 2,
-                width: '80vw',
-                maxHeight: '90vh',
-                overflowY: 'auto'
-            }}>
-                <Typography variant="h6" component="h2" gutterBottom>
-                    Upload Media
-                </Typography>
-                <div className='flex flex-col gap-4'>
-                    <div className='flex justify-between items-center'>
-                        <Typography variant="body2" sx={{ flexBasis: '25%' }}>Files</Typography>
-                        <input
-                            type="file"
-                            accept="image/*,video/*,.avi"
-                            onChange={handleFileChange}
-                            disabled={isUploading}
-                            style={{ flexBasis: '75%' }}
-                            multiple
-                        />
-                    </div>
-                </div>
-                {isUploading && (
-                    <Box sx={{ mt: 2 }}>
-                        <LinearProgress variant="determinate" value={uploadProgress} />
-                        <Typography variant="body2" align="center" sx={{ mt: 1 }}>
-                            Uploading file {currentFileIndex + 1} of {mediaData.files.length} ({uploadProgress}%)
-                        </Typography>
-                    </Box>
-                )}
-                <Box className="mt-4 flex items-center justify-end">
-                    <Button
-                        onClick={handleUpload}
-                        variant="contained"
-                        color="primary"
-                        disabled={isUploading || mediaData.files.length === 0}
-                        sx={{ textTransform: "none", mr: 2 }}
-                    >
-                        {isUploading ? <CircularProgress size={24} /> : 'Upload'}
-                    </Button>
-                </Box>
-                <Snackbar open={!!error} autoHideDuration={6000} onClose={() => setError(null)} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
-                    <Alert onClose={() => setError(null)} severity="error" sx={{ width: '100%' }}>
-                        {error}
-                    </Alert>
-                </Snackbar>
-            </Box>
-        </Modal>
-    );
+    // 等待所有文件上传完成
+    await Promise.all(promises);
+
+    // 1 秒后关闭对话框
+    setTimeout(() => {
+        onUpload([]);
+        handleClose();  // 延迟关闭对话框
+    }, 1000);
+  };
+
+  return (
+    <div>
+      <Button variant="outlined" onClick={handleClickOpen}>
+        Upload Files
+      </Button>
+      <Dialog open={open} onClose={handleClose}>
+        <DialogTitle>Upload Files</DialogTitle>
+        <DialogContent>
+          <Input
+            type="file"
+            inputProps={{
+              accept: "image/*,video/*,.avi",
+              multiple: true,
+            }}
+            onChange={handleFileChange}
+          />
+          {isUploading && (
+            <div style={{ marginTop: "20px" }}>
+              <Typography variant="body2" color="textSecondary">
+                Uploading...
+              </Typography>
+              <LinearProgress variant="determinate" value={progress} />
+            </div>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleClose} color="primary" disabled={isUploading}>
+            Cancel
+          </Button>
+          <Button onClick={handleClose} color="primary" disabled={isUploading}>
+            Upload
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </div>
+  );
 };
 
 export default UploadMediaModal;

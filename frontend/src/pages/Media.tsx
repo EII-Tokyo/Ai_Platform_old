@@ -3,12 +3,14 @@ import {
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
     Button, CircularProgress, Pagination, Typography, Box, Chip, Checkbox,
     Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
-    Modal
+    Modal, TextField
 } from '@mui/material';
 import { ITaskRequest, Media, Model } from '../interface';
 import UploadMediaModal from '../components/UploadMediaModal';
 import RunWithModelModal from '../components/RunWithModelModal';
 import UploadFolderModal from '../components/UploadFolderModal';
+import FilePathDisplay from '../components/FilePathDisplay';
+import axios from 'axios';
 
 const MediaManagement = () => {
     const [mediaItems, setMediaItems] = useState<Media[]>([]);
@@ -18,6 +20,8 @@ const MediaManagement = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [isUploadFolderModalOpen, setIsUploadFolderModalOpen] = useState(false);
+    const [isNewFolderModalOpen, setIsNewFolderModalOpen] = useState(false);
+    const [newFolderName, setNewFolderName] = useState('');
     const [selectedMedias, setSelectedMedias] = useState<string[]>([]);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
@@ -25,15 +29,68 @@ const MediaManagement = () => {
     const [isRunWithModelModalOpen, setIsRunWithModelModalOpen] = useState(false);
     const [selectedMedia, setSelectedMedia] = useState<Media | null>(null);
     const [models, setModels] = useState<Model[]>([]);
+    const [currentPath, setCurrentPath] = useState("/"); // 当前文件夹名
+    const [currentFolderId, setCurrentFolderId] = useState<string>('root'); // 当前文件夹的ID
+    const [flashingRow, setFlashingRow] = useState<string | null>(null); // 用于闪烁背景的行 ID
 
-    const fetchMediaItems = useCallback(async () => {       
+    const handleAddFolder = async (folderName: string, uploadTime: number) => {
+        const newFolder: Media = {
+            _id: `folder-${Date.now()}`, // 使用时间戳作为临时ID
+            name: folderName,
+            description: '', // 文件夹可以暂时没有描述
+            original_filename: folderName,
+            minio_filename: '', // 文件夹没有预览文件
+            file_size: 0, // 文件夹没有文件大小
+            content_type: '',
+            vcodec: '',
+            upload_time: uploadTime,
+            parent_id: currentFolderId,
+            media_type: 'folder', // 文件夹类型
+            width: 0, // 文件夹没有分辨率
+            height: 0,
+            duration: 0, // 文件夹没有时长
+            status: 'SUCCESS', // 文件夹上传成功
+            progress: 100, // 文件夹上传完成
+            celery_task_id: '', // 文件夹没有任务ID
+            start_time: uploadTime, // 使用上传时间作为开始时间
+            error_message: '', // 没有错误信息
+            end_time: uploadTime, // 使用上传时间作为结束时间
+        };
+    
+        try {
+            const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/create_new_folder`, {
+                name: folderName,
+                description: '',
+                upload_time: uploadTime,
+                parent_id: currentFolderId, // 确保包含 parent_id
+            }, {
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (response.status === 200) {
+                setMediaItems((prevMediaItems) => [
+                    { ...newFolder, _id: response.data.folder_id },
+                    ...prevMediaItems
+                ]);
+            } else {
+                console.error('Failed to create folder');
+            }
+        } catch (error) {
+            console.error('Error creating folder:', error);
+        }
+    };
+
+    const fetchMediaItems = useCallback(async (folderId: string = 'root') => {
         setIsLoading(true);
         try {
-            const response = await fetch(`${process.env.REACT_APP_API_URL}/api/medias?limit=${limit}&page_num=${page}`);
+            const response = await fetch(`${process.env.REACT_APP_API_URL}/api/medias?limit=${limit}&page_num=${page}${folderId ? `&folder_id=${folderId}` : ''}`);
             if (response.ok) {
                 const data = await response.json();
                 setMediaItems(data.medias);
                 setTotalPages(data.total_pages);
+                setCurrentFolderId(folderId);
             } else {
                 console.error('Failed to fetch media items');
             }
@@ -47,21 +104,26 @@ const MediaManagement = () => {
     const fetchModels = useCallback(async () => {
         try {
             const response = await fetch(`${process.env.REACT_APP_API_URL}/api/models`);
-            if (response.ok) {
-                const data = await response.json();
-                setModels(data);
-            } else {
-                console.error('Failed to fetch models');
+            if (!response.ok) {
+                const errorData = await response.json(); // Try to get error details from the response
+                const errorMessage = errorData?.message || `Failed to fetch models: ${response.status}`;
+                console.error(errorMessage);
+                // You might want to display an error message to the user here
+                return; // Or throw an error to be handled by a global error boundary
             }
+            const data = await response.json();
+            setModels(data);
         } catch (error) {
             console.error('Error fetching models:', error);
+            // Handle the error (e.g., display a user-friendly message)
         }
     }, []);
 
     useEffect(() => {
-        fetchMediaItems();
+        fetchMediaItems(currentFolderId);
+        console.log('currentFolderId updated: ', currentFolderId);
         fetchModels();
-    }, [fetchMediaItems, fetchModels]);
+    }, [fetchMediaItems, fetchModels, currentFolderId]);
 
     const handleRunWithModel = (media: Media) => {
         setSelectedMedia(media);
@@ -71,68 +133,109 @@ const MediaManagement = () => {
     const handleRunTask = async (params: ITaskRequest) => {
         if (!selectedMedia) return;
 
-        try {
-            setIsLoading(true);
-            const response = await fetch(`${process.env.REACT_APP_API_URL}/api/run_yolo`, {
-                method: 'POST',
+         if (params.media_type == 'folder') {
+            console.log(params)
+            console.log(currentFolderId)
+            const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/get_medias_by_parent_id`, {
+                folderId: params.media_id,
+            }, {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(params),
             });
+            console.log(response.data)
+            
+            for (let i=0; i<response.data.length; i++) {
+                const item = response.data[i];
+                console.log(item['name']);
 
-            if (!response.ok) {
-                throw new Error('Failed to run YOLO task');
+                console.log(item);
+                params.media_id = item._id;
+                params.media_type = 'image';
+
+                console.log(params)
+
+                try {
+                    setIsLoading(true);
+                    const response = await fetch(`${process.env.REACT_APP_API_URL}/api/run_yolo`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(params),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Failed to run YOLO task');
+                    }
+
+                    setIsRunWithModelModalOpen(false);
+                    window.location.href = '/';
+                } catch (error) {
+                    console.error('Error running task:', error);
+                } finally {
+                    setIsLoading(false);
+                }
             }
+        }else {
 
-            setIsRunWithModelModalOpen(false);
-            window.location.href = '/';
-        } catch (error) {
-            console.error('Error running task:', error);
-        } finally {
-            setIsLoading(false);
+            try {
+                setIsLoading(true);
+                const response = await fetch(`${process.env.REACT_APP_API_URL}/api/run_yolo`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(params),
+                });
+    
+                if (!response.ok) {
+                    throw new Error('Failed to run YOLO task');
+                }
+    
+                setIsRunWithModelModalOpen(false);
+                window.location.href = '/';
+            } catch (error) {
+                console.error('Error running task:', error);
+            } finally {
+                setIsLoading(false);
+            }try {
+                setIsLoading(true);
+                const response = await fetch(`${process.env.REACT_APP_API_URL}/api/run_yolo`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(params),
+                });
+    
+                if (!response.ok) {
+                    throw new Error('Failed to run YOLO task');
+                }
+    
+                setIsRunWithModelModalOpen(false);
+                window.location.href = '/';
+            } catch (error) {
+                console.error('Error running task:', error);
+            } finally {
+                setIsLoading(false);
+            }
         }
+
+        
     };
 
-    const formatTimestamp = (timestamp: number): string => {
-        return new Date(timestamp * 1000).toLocaleString();
+    const handleNewFolder = () => {
+        setIsNewFolderModalOpen(true);
     };
 
-    const formatFileSize = (bytes: number): string => {
-        return (bytes / 1024 / 1024).toFixed(2) + ' MB';
-    };
-
-    const formatDuration = (seconds: number): string => {
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = Math.floor(seconds % 60);
-        return [h, m, s].map(num => num.toString().padStart(2, '0')).join(':');
-    };
-
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'PENDING':
-                return 'warning';
-            case 'SUCCESS':
-                return 'success';
-            case 'RUNNING':
-                return 'info';
-            case 'FAILURE':
-            case 'REVOKED':
-                return 'error';
-            default:
-                return 'default';
+    const handleCreateFolder = async () => {
+        if (newFolderName.trim()) {
+            await handleAddFolder(newFolderName, Date.now());
+            fetchMediaItems(currentFolderId); // Refresh the media items after adding the folder
+            setNewFolderName('');
+            setIsNewFolderModalOpen(false);
         }
-    };
-
-    const handleSelectMedia = (id: string) => {
-        setSelectedMedias(prev => 
-            prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
-        );
-    };
-
-    const handleSelectAllMedia = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setSelectedMedias(event.target.checked ? mediaItems.map(item => item._id) : []);
     };
 
     const handleDeleteMedias = async () => {
@@ -142,10 +245,10 @@ const MediaManagement = () => {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(selectedMedias),
+                body: JSON.stringify({ media_ids: selectedMedias }),
             });
             if (response.ok) {
-                fetchMediaItems();
+                fetchMediaItems(currentFolderId);
                 setSelectedMedias([]);
             } else {
                 console.error('Failed to delete media items');
@@ -162,38 +265,76 @@ const MediaManagement = () => {
         setIsPreviewModalOpen(true);
     };
 
-    const CircularProgressWithLabel = ({ value, status }: { value: number; status: string }) => (
-        <Box position="relative" display="inline-flex">
-            <CircularProgress
-                variant="determinate"
-                value={value}
-                color={getStatusColor(status) as "success" | "error" | "warning" | "info" | "inherit"}
-            />
-            <Box
-                top={0}
-                left={0}
-                bottom={0}
-                right={0}
-                position="absolute"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-            >
-                <Typography variant="caption" component="div" color="textSecondary">
-                    {`${Math.round(value)}%`}
-                </Typography>
-            </Box>
-        </Box>
-    );
+    const formatFileSize = (size: number) => {
+        if (size === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(size) / Math.log(k));
+        return parseFloat((size / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
+    // 处理双击文件夹的逻辑
+    const handleDoubleClickFolder = async (folder: Media) => {
+        if (folder.media_type !== "folder") return;
+
+        // 触发背景闪烁效果
+        setFlashingRow(folder._id);
+        setTimeout(() => setFlashingRow(null), 300); // 背景闪烁效果持续300毫秒
+
+        // 更改当前文件夹名称和 ID
+        setCurrentPath(folder.full_path ?? '');
+        setCurrentFolderId(folder._id);
+    };
+
+    const handleNavigateToParent = async () => {
+
+        if (currentFolderId !== '') {
+            try {
+                // 构建正确的 API 请求地址
+                const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/get_parent_info_by_folder_id`, {
+                    folderId: currentFolderId,
+                }, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+                
+                if (response.status === 200) {
+                    // 确保 parent_id 存在，并且更新当前文件夹 ID
+                    const parent_path = (response.data.parent_path || 'root') === 'root' ? '/' : response.data.parent_path;
+                    setCurrentPath(parent_path);
+                    fetchMediaItems(response.data.parent_id);
+                } else {
+                    // 处理后端返回的错误
+                    console.error(`Failed to fetch parent folder. Status: ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Error fetching parent folder:', error);
+            }
+        }
+    };
 
     return (
         <div className="p-4">
             <div className="flex justify-between items-center mb-4">
-                <Typography variant="h5" component="div">Media Management</Typography>
-                <div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <Typography variant="h5" component="div">Media Management</Typography>
+                    <FilePathDisplay filePath={currentPath}/>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <Button
+                        variant="outlined"
+                        color="secondary"
+                        onClick={handleNavigateToParent}
+                        disableElevation
+                        sx={{ textTransform: "none", mr: 2 }}
+                        disabled={currentFolderId === 'root'}
+                    >
+                        Parent
+                    </Button>
                     {selectedMedias.length > 0 && (
                         <Button 
-                            variant="contained" 
+                            variant="outlined" 
                             color="error" 
                             onClick={() => setIsDeleteModalOpen(true)}
                             disableElevation
@@ -202,23 +343,30 @@ const MediaManagement = () => {
                             Delete Medias ({selectedMedias.length})
                         </Button>
                     )}
+                    <UploadMediaModal
+                        isOpen={isUploadModalOpen}
+                        onClose={() => setIsUploadModalOpen(false)}
+                        onUpload={() => fetchMediaItems(currentFolderId)}
+                        currentPath={currentPath}
+                        currentFolderId={currentFolderId}
+                    />
                     <Button 
-                        variant="contained" 
-                        color="primary" 
-                        onClick={() => setIsUploadModalOpen(true)}
-                        disableElevation
-                        sx={{ textTransform: "none" }}
-                    >
-                        Upload File
-                    </Button>
-                    <Button 
-                        variant="contained" 
+                        variant="outlined" 
                         color="secondary" 
                         onClick={() => setIsUploadFolderModalOpen(true)}
                         disableElevation
                         sx={{ ml: 2, textTransform: "none" }}
                     >
                         Upload Folder
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        color="secondary"
+                        onClick={handleNewFolder}
+                        disableElevation
+                        sx={{ ml: 2, textTransform: "none" }}
+                    >
+                        New Folder
                     </Button>
                 </div>
             </div>
@@ -240,47 +388,53 @@ const MediaManagement = () => {
                                     <Checkbox
                                         indeterminate={selectedMedias.length > 0 && selectedMedias.length < mediaItems.length}
                                         checked={mediaItems.length > 0 && selectedMedias.length === mediaItems.length}
-                                        onChange={handleSelectAllMedia}
+                                        onChange={(event) => setSelectedMedias(event.target.checked ? mediaItems.map(item => item._id) : [])}
                                     />
                                 </TableCell>
                                 <TableCell>Preview</TableCell>
-                                <TableCell>Filename</TableCell>                               
-                                <TableCell>Media Type</TableCell>
-                                <TableCell>Resolution</TableCell>
-                                <TableCell>Duration</TableCell>
-                                <TableCell>File Size</TableCell>
-                                <TableCell>Content Type</TableCell>
-                                <TableCell>Vcodec</TableCell>
+                                <TableCell>Filename</TableCell>
+                                <TableCell>Type</TableCell>
+                                <TableCell>Size</TableCell>
                                 <TableCell>Upload Time</TableCell>
-                                <TableCell>Status</TableCell>
-                                <TableCell>Progress</TableCell>
                                 <TableCell>Actions</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
                             {mediaItems.map((media: Media) => (
-                                <TableRow key={media._id}>
+                                <TableRow
+                                    key={media._id}
+                                    hover
+                                    sx={{
+                                    "&:hover": { backgroundColor: "#e0f7fa" },
+                                    backgroundColor:
+                                        flashingRow === media._id ? "#ffeb3b" : "inherit",
+                                    }}
+                                    onDoubleClick={() => handleDoubleClickFolder(media)} // 双击事件
+                                >
                                     <TableCell padding="checkbox">
                                         <Checkbox
                                             checked={selectedMedias.includes(media._id)}
-                                            onChange={() => handleSelectMedia(media._id)}
+                                            onChange={() => setSelectedMedias(prev => prev.includes(media._id) ? prev.filter(item => item !== media._id) : [...prev, media._id])}
                                         />
                                     </TableCell>
                                     <TableCell>
-                                        {media.media_type === 'image' ? (
+                                        {media.media_type === 'folder' ? (
+                                            <img
+                                                src={`${process.env.REACT_APP_API_URL}/yolo-files/folder_blue.png`} alt={media.original_filename} style={{ width: '100px', height: '100px', objectFit: 'contain', cursor: 'pointer', backgroundColor: '#ffffff' }} />
+                                        ) : media.media_type === 'image' ? (
                                             <img
                                                 src={`${process.env.REACT_APP_API_URL}/yolo-files/${media.minio_filename}`}
                                                 alt={media.name}
                                                 style={{ width: '100px', height: '100px', objectFit: 'cover', cursor: 'pointer' }}
-                                                onClick={() => handlePreviewMedia(media)}
+                                                onClick={() => media.media_type !== 'folder' && handlePreviewMedia(media)}
                                             />
-                                        ) : (
+                                        ) : media.media_type === 'video' ? (
                                             <video
                                                 src={`${process.env.REACT_APP_API_URL}/yolo-files/${media.minio_filename}`}
                                                 style={{ width: '100px', height: '100px', objectFit: 'cover', cursor: 'pointer' }}
-                                                onClick={() => handlePreviewMedia(media)}
+                                                onClick={() => media.media_type !== 'folder' && handlePreviewMedia(media)}
                                             />
-                                        )}
+                                        ) : null}
                                     </TableCell>
                                     <TableCell>{media.original_filename}</TableCell>                                  
                                     <TableCell>
@@ -291,22 +445,8 @@ const MediaManagement = () => {
                                             variant="outlined"
                                         />
                                     </TableCell>
-                                    <TableCell>{media.width} x {media.height}</TableCell>
-                                    <TableCell>{media.media_type === "video" ? formatDuration(media.duration) : ''}</TableCell>
-                                    <TableCell>{formatFileSize(media.file_size)}</TableCell>
-                                    <TableCell>{media.content_type}</TableCell>
-                                    <TableCell>{media.media_type === "video" ? media.vcodec : ''}</TableCell>
-                                    <TableCell>{formatTimestamp(media.upload_time)}</TableCell>
-                                    <TableCell>
-                                        <Chip
-                                            label={media.status}
-                                            size="small"
-                                            color={getStatusColor(media.status)}
-                                        />
-                                    </TableCell>
-                                    <TableCell>
-                                        <CircularProgressWithLabel value={media.progress || 0} status={media.status} />
-                                    </TableCell>
+                                    <TableCell>{media.file_size ? `${(media.file_size / 1024 / 1024).toFixed(2)} MB` : ''}</TableCell>
+                                    <TableCell>{media.upload_time ? new Date(media.upload_time).toLocaleString() : ''}</TableCell>
                                     <TableCell>
                                         <Button 
                                             variant="contained" 
@@ -334,16 +474,12 @@ const MediaManagement = () => {
                 />
             </Box>
 
-            <UploadMediaModal
-                isOpen={isUploadModalOpen}
-                onClose={() => setIsUploadModalOpen(false)}
-                onUpload={fetchMediaItems}
-            />
 
             <UploadFolderModal
                 isOpen={isUploadFolderModalOpen}
                 onClose={() => setIsUploadFolderModalOpen(false)}
                 onUpload={fetchMediaItems}
+                allowFoldersOnly={true}
             />
 
             <Dialog
@@ -362,6 +498,33 @@ const MediaManagement = () => {
                     </Button>
                     <Button onClick={handleDeleteMedias} color="error" autoFocus disableElevation sx={{ textTransform: "none" }}>
                         Delete
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Dialog
+                open={isNewFolderModalOpen}
+                onClose={() => setIsNewFolderModalOpen(false)}
+            >
+                <DialogTitle>Create Folder</DialogTitle>
+                <DialogContent>
+                    <TextField
+                        autoFocus
+                        margin="dense"
+                        label="Folder Name"
+                        type="text"
+                        fullWidth
+                        variant="standard"
+                        value={newFolderName}
+                        onChange={(e) => setNewFolderName(e.target.value)}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setIsNewFolderModalOpen(false)} color="primary">
+                        Cancel
+                    </Button>
+                    <Button onClick={handleCreateFolder} color="primary">
+                        OK
                     </Button>
                 </DialogActions>
             </Dialog>

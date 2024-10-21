@@ -128,7 +128,6 @@ export function BrowserLayout() {
                                     value={inputUsername}
                                     onChange={(e) => setInputUsername(e.target.value)}
                                     label="Username"
-                                    defaultValue=""
                                     sx={{ width: '300px' }}
                                     error={error}
                                 />
@@ -137,7 +136,6 @@ export function BrowserLayout() {
                                     value={inputPassword}
                                     onChange={(e) => setInputPassword(e.target.value)}
                                     label="Password"
-                                    defaultValue=""
                                     error={error}
                                 />
                                 <Button variant="contained" color="primary" onClick={handleLogin}>

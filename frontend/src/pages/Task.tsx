@@ -277,7 +277,7 @@ const TaskManagement = () => {
     try {
       // 获取文件内容
       const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/yolo-files/${task.minio_filename}`
+        `${process.env.REACT_APP_API_URL}/yolo-files/${task.result_file}`
       );
       const blob = await response.blob(); // 将文件内容转换为 blob
 
