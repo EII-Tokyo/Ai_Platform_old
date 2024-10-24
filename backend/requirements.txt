@@ -9,4 +9,4 @@ redis
 python-logging-loki
 uvicorn
 ultralytics
-python-logging-loki
+websockets

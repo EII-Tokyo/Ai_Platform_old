@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useCallback} from "react";
 import {
   Table,
   TableBody,
@@ -21,11 +21,14 @@ import {
   DialogActions,
   Chip,
 } from "@mui/material";
-import { Task, Model } from "../interface";
+import { Task, Model, Media } from "../interface";
 import CreateTaskModal from "../components/CreateTaskModal";
 import RerunTaskModal from "../components/RerunTaskModal";
+import NavigateToParentButton from '../components/button/NavigateToParentButton';
 import videojs from "video.js";
 import "video.js/dist/video-js.css";
+import axios from 'axios';
+import JSZip from 'jszip';
 
 const TaskManagement = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -39,14 +42,9 @@ const TaskManagement = () => {
   const [isTerminateModalOpen, setIsTerminateModalOpen] = useState(false);
   const [taskToTerminate, setTaskToTerminate] = useState<Task | null>(null);
   const [models, setModels] = useState<Model[]>([]);
-  const [isFullscreenImageOpen, setIsFullscreenImageOpen] = useState(false);
-  const [fullscreenImageSrc, setFullscreenImageSrc] = useState("");
-  const [isFullscreenMediaOpen, setIsFullscreenMediaOpen] = useState(false);
-  const [fullscreenMediaSrc, setFullscreenMediaSrc] = useState("");
-  const [fullscreenMediaType, setFullscreenMediaType] = useState<
-    "image" | "video"
-  >("image");
-  const videoRef = useRef(null);
+  const [currentPath, setCurrentPath] = useState("/"); // 当前文件夹名
+  const [currentFolderId, setCurrentFolderId] = useState<string>("root"); // 当前文件夹的ID
+  const [isLoading, setIsLoading] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState<{ [taskId: string]: boolean }>(
     {}
@@ -89,47 +87,6 @@ const TaskManagement = () => {
     return model ? model.name : "Model Deleted!!!";
   };
 
-  useEffect(() => {
-    let player: any;
-    if (
-      isFullscreenMediaOpen &&
-      fullscreenMediaType === "video" &&
-      videoRef.current
-    ) {
-      player = videojs(videoRef.current, {
-        controls: true,
-        autoplay: false,
-        preload: "auto",
-      });
-    }
-    return () => {
-      if (player) {
-        player.dispose();
-      }
-    };
-  }, [isFullscreenMediaOpen, fullscreenMediaType]);
-
-  useEffect(() => {
-    fetchTasks();
-    fetchModels();
-  }, [page, limit]);
-
-  const handleDownload = (fileUrl: string, fileName: string) => {
-    fetch(fileUrl)
-      .then((response) => response.blob())
-      .then((blob) => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.style.display = "none";
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-      })
-      .catch(() => console.error("Error downloading the file"));
-  };
-
   const fetchModels = async () => {
     try {
       const response = await fetch(
@@ -151,19 +108,30 @@ const TaskManagement = () => {
     return new Date(timestamp * 1000).toLocaleString();
   };
 
-  useEffect(() => {
-    const intervalId = setInterval(fetchTasks, 1000); // Fetch tasks every second
-    return () => clearInterval(intervalId);
+  const fetchTasks = useCallback(async (folderId: string = 'root') => {
+      setIsLoading(true);
+      try {
+          const response = await fetch(`${process.env.REACT_APP_API_URL}/api/tasks?limit=${limit}&page_num=${page}${folderId ? `&folder_id=${folderId}` : ''}`);
+          if (response.ok) {
+              const data = await response.json();
+              setTasks(data.tasks);
+              setTotalPages(data.total_pages);
+              setCurrentFolderId(folderId);
+          } else {
+              console.error('Failed to fetch tasks items');
+          }
+      } catch (error) {
+          console.error('Error fetching tasks items:', error);
+      } finally {
+          setIsLoading(false);
+      }
   }, [page, limit]);
 
-  const fetchTasks = async () => {
-    const response = await fetch(
-      `${process.env.REACT_APP_API_URL}/api/tasks?limit=${limit}&page_num=${page}`
-    );
-    const data = await response.json();
-    setTasks(data.tasks);
-    setTotalPages(data.total_pages);
-  };
+  useEffect(() => {
+    fetchTasks(currentFolderId);
+    console.log('currentFolderId updated: ', currentFolderId);
+    fetchModels();
+  }, [currentFolderId]);
 
   const handleRerun = (task: Task, event: React.MouseEvent) => {
     // 阻止事件冒泡到 TableRow 的 onClick
@@ -214,7 +182,7 @@ const TaskManagement = () => {
 
   const handleSelectAllTasks = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
-      setSelectedTasks(tasks.map((task) => task._id));
+      setSelectedTasks(tasks && tasks.map((task) => task._id));
     } else {
       setSelectedTasks([]);
     }
@@ -261,7 +229,7 @@ const TaskManagement = () => {
     }));
   };
 
-  const handleRowClick = (task: Task) => {
+  const handlePreviewMedia = (task: Task) => {
     // 如果点击的是已经选择的任务，则清除选择，恢复原布局
     if (selectedTask && selectedTask._id === task._id) {
       setSelectedTask(null);
@@ -288,10 +256,122 @@ const TaskManagement = () => {
       link.download = task.original_filename; // 使用表格中显示的 Media Name 作为下载文件名
       link.click();
 
-      // 释放 URL 对象
+      // 释放URL对象
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Error downloading file:", error);
+    }
+  };
+
+  const handleDownloadFolder = async (task: Task, event: React.MouseEvent) => {
+    // 阻止事件冒泡到 TableRow 的 onClick
+    event.stopPropagation();
+
+    try {
+      // 获取文件夹下的所有任务项（假设通过 folder_id 获取）
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/tasks?folder_id=${task._id}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch folder contents');
+      }
+      
+      const folderData = await response.json();
+      const tasksInFolder = folderData.tasks;
+
+      if (!tasksInFolder || tasksInFolder.length === 0) {
+        console.error("Folder is empty");
+        return;
+      }
+
+      // 创建一个 JSZip 实例
+      const zip = new JSZip();
+
+      console.log(tasksInFolder);
+
+      // 循环遍历文件夹中的所有任务项并下载文件
+      for (const item of tasksInFolder) {
+        if (item.result_file) {
+          const fileResponse = await fetch(`${process.env.REACT_APP_API_URL}/yolo-files/${item.result_file}`);
+          if (!fileResponse.ok) {
+            console.error(`Failed to download file: ${item.result_file}`);
+            continue;
+          }
+
+          const blob = await fileResponse.blob(); // 下载图片内容
+
+          // 添加到 ZIP 文件中
+          zip.file(item.original_filename, blob);
+        }
+      }
+
+      // 生成 ZIP 文件并下载
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(zipBlob);
+      link.href = url;
+      link.download = `${task.original_filename}.zip`; // 文件夹名称作为 ZIP 文件名
+      link.click();
+
+      // 释放 URL 对象
+      URL.revokeObjectURL(url);
+
+    } catch (error) {
+      console.error("Error downloading folder:", error);
+    }
+  };
+
+  // 主下载处理函数
+  const handleDownload = async (task: Task, event: React.MouseEvent) => {
+    if (task.media_type === 'folder') {
+      // 处理文件夹下载
+      await handleDownloadFolder(task, event);
+    } else {
+      // 单个文件下载
+      await handleDownloadImage(task, event);
+    }
+  };
+
+  // 处理双击文件夹的逻辑
+  const handleDoubleClickFolder = async (folder: Task) => {
+    if (folder.media_type !== "folder") return;
+
+    // 更改当前文件夹名称和 ID
+    setCurrentPath(folder.full_path ?? "");
+    setCurrentFolderId(folder._id);
+  };
+
+  const handleNavigateToParent = async () => {
+    if (currentFolderId !== "") {
+      try {
+        // 构建正确的 API 请求地址
+        const response = await axios.post(
+          `${process.env.REACT_APP_API_URL}/api/get_task_parent_info_by_folder_id`,
+          {
+            folderId: currentFolderId,
+          },
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (response.status === 200) {
+          // 确保 parent_id 存在，并且更新当前文件夹 ID
+          const parent_path =
+            (response.data.parent_path || "root") === "root"
+              ? "/"
+              : response.data.parent_path;
+          setCurrentPath(parent_path);
+          fetchTasks(response.data.parent_id);
+        } else {
+          // 处理后端返回的错误
+          console.error(
+            `Failed to fetch parent folder. Status: ${response.status}`
+          );
+        }
+      } catch (error) {
+        console.error("Error fetching parent folder:", error);
+      }
     }
   };
 
@@ -300,18 +380,6 @@ const TaskManagement = () => {
     top: 0,
     backgroundColor: "white",
     zIndex: 1,
-  };
-
-  const stickyFooterStyles = {
-    position: "sticky",
-    bottom: 0,
-    backgroundColor: "white",
-    zIndex: 1,
-    padding: "8px 12px",
-    left: 0, // 确保 footer 从左边对齐
-    right: 0, // 确保 footer 覆盖到右边
-    width: "100%", // 使 footer 宽度覆盖整个表格
-    boxShadow: "0 -2px 5px rgba(0, 0, 0, 0.1)", // 添加轻微阴影增强视觉效果
   };
 
   return (
@@ -330,6 +398,10 @@ const TaskManagement = () => {
               Delete Selected ({selectedTasks.length})
             </Button>
           )}
+          <NavigateToParentButton
+            handleNavigateToParent={handleNavigateToParent}
+            currentFolderId={currentFolderId}
+          />
           <Button
             variant="contained"
             sx={{ textTransform: "none", marginLeft: "8px" }}
@@ -353,27 +425,33 @@ const TaskManagement = () => {
             maxHeight: "90vh",
           }} // 保持最大高度和滚动条
         >
-          <TableContainer sx={{ maxHeight: "80vh", width: '100%' }}>
+          <TableContainer sx={{ maxHeight: "80vh", width: "100%" }}>
             {/* 设置 TableContainer 的最大高度并允许滚动 */}
-            <Table stickyHeader sx={{ width: '100%' }}>
+            <Table stickyHeader sx={{ width: "100%" }}>
               {/* 启用 stickyHeader  */}
               <TableHead>
                 <TableRow>
                   <TableCell padding="checkbox" sx={stickyHeaderStyles}>
                     <Checkbox
                       indeterminate={
-                        selectedTasks.length > 0 &&
+                        selectedTasks.length > 0 && tasks &&
                         selectedTasks.length < tasks.length
                       }
                       checked={
-                        tasks.length > 0 &&
+                        tasks && tasks.length > 0 &&
                         selectedTasks.length === tasks.length
                       }
                       onChange={handleSelectAllTasks}
                     />
                   </TableCell>
-                  <TableCell sx={{ ...stickyHeaderStyles, width: "150px" }}>Media Name</TableCell>
-                  <TableCell sx={{ ...stickyHeaderStyles, textAlign: "center" }}>Media</TableCell>
+                  <TableCell sx={{ ...stickyHeaderStyles, width: "150px" }}>
+                    Media Name
+                  </TableCell>
+                  <TableCell
+                    sx={{ ...stickyHeaderStyles, textAlign: "center" }}
+                  >
+                    Media
+                  </TableCell>
 
                   {!selectedTask && (
                     <>
@@ -396,10 +474,10 @@ const TaskManagement = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {tasks.map((task: Task) => (
+                {tasks && tasks.map((task: Task) => (
                   <TableRow
                     key={task._id}
-                    onClick={() => handleRowClick(task)} // 点击行事件
+                    onDoubleClick={() => handleDoubleClickFolder(task)} // 双击事件
                     sx={{
                       "&:hover": {
                         backgroundColor: "#e0f7fa", // 鼠标悬停时的背景色
@@ -421,9 +499,21 @@ const TaskManagement = () => {
                         alignItems: "center", // 图片垂直居中
                       }}
                     >
-                      {task.media_type === "image" ? (
+                      {task.media_type === "folder" ? (
                         <img
-                          src={`${process.env.REACT_APP_API_URL}/yolo-files/${task.minio_filename}`}
+                          src={`${process.env.REACT_APP_MINIO_URL}/yolo-files/folder_blue.png`}
+                          alt={task.original_filename}
+                          style={{
+                            width: "100px",
+                            height: "100px",
+                            objectFit: "cover",
+                            cursor: "pointer",
+                            backgroundColor: "#ffffff",
+                          }}
+                        />
+                      ) : task.media_type === "image" ? (
+                        <img
+                          src={`${process.env.REACT_APP_MINIO_URL}/yolo-files/${task.minio_filename}`}
                           alt="Task input"
                           style={{
                             width: "180px",
@@ -431,20 +521,27 @@ const TaskManagement = () => {
                             objectFit: "cover",
                             cursor: "pointer",
                           }}
+                          onClick={() =>
+                            task.media_type !== "folder" &&
+                            handlePreviewMedia(task) }
                         />
                       ) : (
                         <video
-                          src={`${process.env.REACT_APP_API_URL}/yolo-files/${task.minio_filename}`}
+                          src={`${process.env.REACT_APP_MINIO_URL}/yolo-files/${task.minio_filename}`}
                           style={{
                             width: "180px",
                             height: "120px",
                             objectFit: "cover",
                             cursor: "pointer",
                           }}
+                          onClick={() =>
+                            task.media_type !== "folder" &&
+                            handlePreviewMedia(task) }
                         />
                       )}
+
                     </TableCell>
-                    {!selectedTask && (
+                    { !selectedTask && (
                       <TableCell
                         sx={{
                           color:
@@ -453,7 +550,7 @@ const TaskManagement = () => {
                               : "black",
                         }}
                       >
-                        {getModelName(task.model_id)}
+                        {task.media_type === "folder" ? '' : getModelName(task.model_id)}
                       </TableCell>
                     )}
                     {!selectedTask && (
@@ -461,7 +558,8 @@ const TaskManagement = () => {
                         <Box
                           sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}
                         >
-                          {task.detect_classes &&
+                          {task.media_type === "folder" ? '' :
+                           task && task.detect_classes &&
                             (isExpanded[task._id] // 根据当前 task 的状态决定显示
                               ? task.detect_classes.map((className, index) => (
                                   <Chip
@@ -501,12 +599,16 @@ const TaskManagement = () => {
                         </Box>
                       </TableCell>
                     )}
-                    {!selectedTask && <TableCell>{task.conf}</TableCell>}
+                    {!selectedTask && <TableCell>
+                      {task.media_type === "folder" ? "" :task.conf}
+                      </TableCell>}
                     {!selectedTask && (
-                      <TableCell>{`${task.width}x${task.height}`}</TableCell>
+                      <TableCell>
+                      {task.media_type === "folder" ? "" : `${task.width}x${task.height}`}
+                      </TableCell>
                     )}
                     {!selectedTask && (
-                      <TableCell>{task.augment ? "Yes" : "No"}</TableCell>
+                      <TableCell>{task.media_type === "folder" ? "" : task.augment ? "Yes" : "No"}</TableCell>
                     )}
                     {!selectedTask && (
                       <TableCell>
@@ -515,14 +617,14 @@ const TaskManagement = () => {
                     )}
                     {!selectedTask && (
                       <TableCell>
-                        {task.start_time
+                        {task.media_type === "folder" ? "" : task.start_time
                           ? formatTimestamp(task.start_time)
                           : "-"}
                       </TableCell>
                     )}
                     {!selectedTask && (
                       <TableCell>
-                        {task.end_time ? formatTimestamp(task.end_time) : "-"}
+                        {task.media_type === "folder" ? "" : task.end_time ? formatTimestamp(task.end_time) : "-"}
                       </TableCell>
                     )}
                     {!selectedTask && (
@@ -581,7 +683,7 @@ const TaskManagement = () => {
                         variant="contained"
                         disableElevation
                         size="small"
-                        onClick={(event) => handleDownloadImage(task, event)} // 修改为下载功能
+                        onClick={(event) => handleDownload(task, event)} // 修改为下载功能
                       >
                         Download
                       </Button>
@@ -665,13 +767,21 @@ const TaskManagement = () => {
         )}
       </Box>
       <div className="flex justify-end mt-4 items-center">
-                <Pagination count={totalPages} page={page} onChange={(_, value) => setPage(value)} />
-                <Select sx={{ "& .MuiOutlinedInput-input": { padding: "8px 12px" } }} value={limit} onChange={(e: any) => setLimit(e.target.value as number)}>
-                    <MenuItem value={10}>10</MenuItem>
-                    <MenuItem value={20}>20</MenuItem>
-                    <MenuItem value={50}>50</MenuItem>
-                </Select>
-            </div>
+        <Pagination
+          count={totalPages}
+          page={page}
+          onChange={(_, value) => setPage(value)}
+        />
+        <Select
+          sx={{ "& .MuiOutlinedInput-input": { padding: "8px 12px" } }}
+          value={limit}
+          onChange={(e: any) => setLimit(e.target.value as number)}
+        >
+          <MenuItem value={10}>10</MenuItem>
+          <MenuItem value={20}>20</MenuItem>
+          <MenuItem value={50}>50</MenuItem>
+        </Select>
+      </div>
       <Dialog
         open={isTerminateModalOpen}
         onClose={handleCloseTerminateModal}

@@ -25,7 +25,3 @@ RUN cp -r ./build/* /var/www/html
 # RUN rm /etc/nginx/conf.d/default.conf
 RUN cp ./conf.d/* /etc/nginx/conf.d
 RUN rm -rf /etc/nginx/sites-enabled/default
-
-# RUN rm /etc/nginx/conf.d/default.conf
-# COPY ./prod.conf /etc/nginx/conf.d
-# COPY ./dev.conf /etc/nginx/conf.d

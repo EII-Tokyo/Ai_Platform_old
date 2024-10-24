@@ -158,29 +158,29 @@ export default function View() {
       })
   }, []);
 
-  useEffect(() => {
+  // useEffect(() => {
     // connect to the websocket
-    console.log(window.location);
-    const proto = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    ws.current = new WebSocket(proto + window.location.host + process.env.REACT_APP_API_URL + '/api/ws');
-    ws.current.onopen = () => {
-      console.log('connected');
-      setConnected(false);
-      setOpen(false);
-    };
-    ws.current.onmessage = (e) => {
-      processMsg(e.data);
-    };
-    ws.current.onclose = () => {
-      console.log('disconnected');
-      setConnected(true);
-      setOpen(true);
-      setAlertMsg("Disconnect from the robot. Please refresh the page.");
-    };
-    return () => {
-      ws.current?.close();
-    }
-  }, [config]);
+    // console.log(window.location);
+    // const proto = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+    // ws.current = new WebSocket(proto + window.location.host + process.env.REACT_APP_API_URL + '/api/ws');
+  //   ws.current.onopen = () => {
+  //     console.log('connected');
+  //     setConnected(false);
+  //     setOpen(false);
+  //   };
+  //   ws.current.onmessage = (e) => {
+  //     processMsg(e.data);
+  //   };
+  //   ws.current.onclose = () => {
+  //     console.log('disconnected');
+  //     setConnected(true);
+  //     setOpen(true);
+  //     setAlertMsg("Disconnect from the robot. Please refresh the page.");
+  //   };
+  //   return () => {
+  //     ws.current?.close();
+  //   }
+  // }, [config]);
 
   return (
     <StyledRoot>

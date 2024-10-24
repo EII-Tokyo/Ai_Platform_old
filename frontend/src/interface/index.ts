@@ -80,7 +80,7 @@ export interface Task {
   celery_task_id: string;
   status: "PENDING" | "RUNNING" | "SUCCESS" | "FAILURE" | "REVOKED";
   media_id: string;
-  media_type: "image" | "video";
+  media_type: "image" | "video" | "folder";
   model_id: string;
   detect_classes: string[];
   original_filename: string;
@@ -96,6 +96,8 @@ export interface Task {
   end_time?: number; // Unix timestamp, optional
   progress?: number; // 0 to 100
   result_file: string; // Minio filename
+  full_path: string;
+  parent_id: string;
   error?: string;
 }
 

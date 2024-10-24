@@ -18,7 +18,9 @@
     "axios": "^1.4.0",
     "dayjs": "^1.11.10",
     "echarts": "^5.4.2",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.429.0",
+    "mitt": "^3.0.1",
     "react": "latest",
     "react-color": "^2.19.3",
     "react-device-detect": "^2.2.3",
@@ -27,11 +29,12 @@
     "react-scripts": "latest",
     "react-share": "^5.1.0",
     "typescript": "latest",
-    "video.js": "7.20.0"
+    "video.js": "7.20.0",
+    "wscat": "^6.0.1"
   },
   "scripts": {
-    "start": "HOST=localhost PORT=3002 react-scripts start --env-file .env.development",
-    "build": "react-scripts build --env-file .env.production",
+    "start": "HOST=0.0.0.0 PORT=3000 react-scripts start --env-file .env.development",
+    "build": "react-scripts build --env-file .env.development",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

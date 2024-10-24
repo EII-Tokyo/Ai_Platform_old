@@ -5,11 +5,11 @@ import {
     Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
     Modal, TextField
 } from '@mui/material';
-import { ITaskRequest, Media, Model } from '../interface';
+import { ITaskRequest, Media, Model, Task } from '../interface';
 import UploadMediaModal from '../components/UploadMediaModal';
 import RunWithModelModal from '../components/RunWithModelModal';
-import UploadFolderModal from '../components/UploadFolderModal';
 import FilePathDisplay from '../components/FilePathDisplay';
+import NavigateToParentButton from '../components/button/NavigateToParentButton';
 import axios from 'axios';
 
 const MediaManagement = () => {
@@ -19,7 +19,6 @@ const MediaManagement = () => {
     const [totalPages, setTotalPages] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-    const [isUploadFolderModalOpen, setIsUploadFolderModalOpen] = useState(false);
     const [isNewFolderModalOpen, setIsNewFolderModalOpen] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
     const [selectedMedias, setSelectedMedias] = useState<string[]>([]);
@@ -58,7 +57,7 @@ const MediaManagement = () => {
         };
     
         try {
-            const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/create_new_folder`, {
+            const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/medias_create_new_folder`, {
                 name: folderName,
                 description: '',
                 upload_time: uploadTime,
@@ -130,55 +129,53 @@ const MediaManagement = () => {
         setIsRunWithModelModalOpen(true);
     };
 
+
+    const handleAddTaskFolder = async (
+      media_id : string,
+      origin_filename: string,
+      full_path: string,
+      parent_id: string
+    ) => {
+      const newTaskFolder = {
+        media_id: media_id,
+        original_filename: origin_filename,
+        full_path: full_path, // 文件夹路径
+        parent_id: parent_id // 确保包含 parent_id
+      };
+
+      try {
+        console.log("begin to call task_create_new_folder");
+        const response = await axios.post(
+          `${process.env.REACT_APP_API_URL}/api/task_create_new_folder`,
+            newTaskFolder,
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+        );
+
+        if (response.status === 200) {
+          // setTasks((prevTaskItems : Task[]) => [
+          //   { ...newTaskFolder, _id: response.data.folder_id },
+          //   ...prevTaskItems,
+          // ]);
+
+          return response.data.folder_id;
+        } else {
+          console.error("Failed to create task folder");
+          return null;
+        }
+      } catch (error) {
+        console.error("Error creating task folder:", error);
+        return null;
+      }
+    };
+
     const handleRunTask = async (params: ITaskRequest) => {
         if (!selectedMedia) return;
-
-         if (params.media_type == 'folder') {
-            console.log(params)
-            console.log(currentFolderId)
-            const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/get_medias_by_parent_id`, {
-                folderId: params.media_id,
-            }, {
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            });
-            console.log(response.data)
-            
-            for (let i=0; i<response.data.length; i++) {
-                const item = response.data[i];
-                console.log(item['name']);
-
-                console.log(item);
-                params.media_id = item._id;
-                params.media_type = 'image';
-
-                console.log(params)
-
-                try {
-                    setIsLoading(true);
-                    const response = await fetch(`${process.env.REACT_APP_API_URL}/api/run_yolo`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(params),
-                    });
-
-                    if (!response.ok) {
-                        throw new Error('Failed to run YOLO task');
-                    }
-
-                    setIsRunWithModelModalOpen(false);
-                    window.location.href = '/';
-                } catch (error) {
-                    console.error('Error running task:', error);
-                } finally {
-                    setIsLoading(false);
-                }
-            }
-        }else {
-
+    
+        const runYoloTask = async (params: ITaskRequest) => {
             try {
                 setIsLoading(true);
                 const response = await fetch(`${process.env.REACT_APP_API_URL}/api/run_yolo`, {
@@ -192,39 +189,78 @@ const MediaManagement = () => {
                 if (!response.ok) {
                     throw new Error('Failed to run YOLO task');
                 }
-    
-                setIsRunWithModelModalOpen(false);
-                window.location.href = '/';
-            } catch (error) {
-                console.error('Error running task:', error);
-            } finally {
-                setIsLoading(false);
-            }try {
-                setIsLoading(true);
-                const response = await fetch(`${process.env.REACT_APP_API_URL}/api/run_yolo`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(params),
-                });
-    
-                if (!response.ok) {
-                    throw new Error('Failed to run YOLO task');
-                }
-    
-                setIsRunWithModelModalOpen(false);
-                window.location.href = '/';
             } catch (error) {
                 console.error('Error running task:', error);
             } finally {
                 setIsLoading(false);
             }
+        };
+    
+        try {
+            let taskFoldersMeta: Media[] = []; // 用于存储每个任务的元数据
+
+            if (params.media_type === 'folder') {
+                // 调用handleAddTaskFolder函数创建文件夹函数, 创建获得文件夹获得_id 号码
+
+                console.log('media :',selectedMedia);
+
+                // 根据文件夹的_id，获得该文件夹下所有文件
+                const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/get_medias_by_parent_id`, {
+                    folderId: params.media_id,
+                }, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                console.log('response.data :', response.data);
+
+                console.log('Selected Media:', selectedMedia); 
+
+                try {
+                    const folderId = await handleAddTaskFolder(
+                        selectedMedia._id,
+                        selectedMedia.original_filename,
+                        selectedMedia.full_path ?? '',
+                        selectedMedia.parent_id ?? ''
+                      );
+
+                    console.log('folder_id :', folderId);
+
+                    const promises = response.data.map(async (item: any) => {
+                      params.media_id = item._id;
+                      params.media_type = 'image';
+                      params.parent_id = folderId;
+      
+                      await runYoloTask(params);
+  
+                      taskFoldersMeta.push(item); // 将当前 item 添加到元数据列表中
+                    });
+    
+                    // 等待所有的 YOLO 任务执行完成
+                    await Promise.all(promises);
+                  if (folderId) {
+                    console.log("Task Folder created with ID:", folderId);
+                  } else {
+                    console.error("Failed to create Task folder.");
+                  }
+                } catch (error) {
+                  console.error("Error caught in calling function:", error);
+                }
+
+            } else {
+                // 直接执行单个 YOLO 任务
+                await runYoloTask(params);
+            }
+    
+            // 所有任务完成后进行页面跳转
+            setIsRunWithModelModalOpen(false);
+            // window.location.href = '/';
+        } catch (error) {
+            console.error('Error fetching folder items or running YOLO task:', error);
         }
-
-        
     };
-
+    
     const handleNewFolder = () => {
         setIsNewFolderModalOpen(true);
     };
@@ -245,7 +281,7 @@ const MediaManagement = () => {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ media_ids: selectedMedias }),
+                body: JSON.stringify(selectedMedias),
             });
             if (response.ok) {
                 fetchMediaItems(currentFolderId);
@@ -286,19 +322,19 @@ const MediaManagement = () => {
         setCurrentFolderId(folder._id);
     };
 
-    const handleNavigateToParent = async () => {
-
-        if (currentFolderId !== '') {
+    const handleNavigateToParent = useCallback( async () => {
+        if (currentFolderId !== 'root') {
             try {
                 // 构建正确的 API 请求地址
-                const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/get_parent_info_by_folder_id`, {
+                console.log('currentFolderId : ',currentFolderId);
+                const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/get_medias_parent_info_by_folder_id`, {
                     folderId: currentFolderId,
                 }, {
                     headers: {
                         'Content-Type': 'application/json',
                     },
                 });
-                
+    
                 if (response.status === 200) {
                     // 确保 parent_id 存在，并且更新当前文件夹 ID
                     const parent_path = (response.data.parent_path || 'root') === 'root' ? '/' : response.data.parent_path;
@@ -312,283 +348,341 @@ const MediaManagement = () => {
                 console.error('Error fetching parent folder:', error);
             }
         }
-    };
+    }, [currentFolderId, fetchMediaItems]); 
 
     return (
-        <div className="p-4">
-            <div className="flex justify-between items-center mb-4">
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <Typography variant="h5" component="div">Media Management</Typography>
-                    <FilePathDisplay filePath={currentPath}/>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <Button
-                        variant="outlined"
-                        color="secondary"
-                        onClick={handleNavigateToParent}
-                        disableElevation
-                        sx={{ textTransform: "none", mr: 2 }}
-                        disabled={currentFolderId === 'root'}
-                    >
-                        Parent
-                    </Button>
-                    {selectedMedias.length > 0 && (
-                        <Button 
-                            variant="outlined" 
-                            color="error" 
-                            onClick={() => setIsDeleteModalOpen(true)}
-                            disableElevation
-                            sx={{ mr: 2, textTransform: "none" }}
-                        >
-                            Delete Medias ({selectedMedias.length})
-                        </Button>
-                    )}
-                    <UploadMediaModal
-                        isOpen={isUploadModalOpen}
-                        onClose={() => setIsUploadModalOpen(false)}
-                        onUpload={() => fetchMediaItems(currentFolderId)}
-                        currentPath={currentPath}
-                        currentFolderId={currentFolderId}
-                    />
-                    <Button 
-                        variant="outlined" 
-                        color="secondary" 
-                        onClick={() => setIsUploadFolderModalOpen(true)}
-                        disableElevation
-                        sx={{ ml: 2, textTransform: "none" }}
-                    >
-                        Upload Folder
-                    </Button>
-                    <Button
-                        variant="outlined"
-                        color="secondary"
-                        onClick={handleNewFolder}
-                        disableElevation
-                        sx={{ ml: 2, textTransform: "none" }}
-                    >
-                        New Folder
-                    </Button>
-                </div>
-            </div>
-            {isLoading ? (
-                <Box display="flex" justifyContent="center" alignItems="center" height="64">
-                    <CircularProgress />
-                </Box>
-            ) : mediaItems.length === 0 ? (
-                <Paper className="p-4 text-center">
-                    <Typography variant="h6">No media items found</Typography>
-                    <Typography variant="body1">Upload some media to get started</Typography>
-                </Paper>
-            ) : (
-                <TableContainer component={Paper}>
-                    <Table>
-                        <TableHead>
-                            <TableRow>
-                                <TableCell padding="checkbox">
-                                    <Checkbox
-                                        indeterminate={selectedMedias.length > 0 && selectedMedias.length < mediaItems.length}
-                                        checked={mediaItems.length > 0 && selectedMedias.length === mediaItems.length}
-                                        onChange={(event) => setSelectedMedias(event.target.checked ? mediaItems.map(item => item._id) : [])}
-                                    />
-                                </TableCell>
-                                <TableCell>Preview</TableCell>
-                                <TableCell>Filename</TableCell>
-                                <TableCell>Type</TableCell>
-                                <TableCell>Size</TableCell>
-                                <TableCell>Upload Time</TableCell>
-                                <TableCell>Actions</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {mediaItems.map((media: Media) => (
-                                <TableRow
-                                    key={media._id}
-                                    hover
-                                    sx={{
-                                    "&:hover": { backgroundColor: "#e0f7fa" },
-                                    backgroundColor:
-                                        flashingRow === media._id ? "#ffeb3b" : "inherit",
-                                    }}
-                                    onDoubleClick={() => handleDoubleClickFolder(media)} // 双击事件
-                                >
-                                    <TableCell padding="checkbox">
-                                        <Checkbox
-                                            checked={selectedMedias.includes(media._id)}
-                                            onChange={() => setSelectedMedias(prev => prev.includes(media._id) ? prev.filter(item => item !== media._id) : [...prev, media._id])}
-                                        />
-                                    </TableCell>
-                                    <TableCell>
-                                        {media.media_type === 'folder' ? (
-                                            <img
-                                                src={`${process.env.REACT_APP_API_URL}/yolo-files/folder_blue.png`} alt={media.original_filename} style={{ width: '100px', height: '100px', objectFit: 'contain', cursor: 'pointer', backgroundColor: '#ffffff' }} />
-                                        ) : media.media_type === 'image' ? (
-                                            <img
-                                                src={`${process.env.REACT_APP_API_URL}/yolo-files/${media.minio_filename}`}
-                                                alt={media.name}
-                                                style={{ width: '100px', height: '100px', objectFit: 'cover', cursor: 'pointer' }}
-                                                onClick={() => media.media_type !== 'folder' && handlePreviewMedia(media)}
-                                            />
-                                        ) : media.media_type === 'video' ? (
-                                            <video
-                                                src={`${process.env.REACT_APP_API_URL}/yolo-files/${media.minio_filename}`}
-                                                style={{ width: '100px', height: '100px', objectFit: 'cover', cursor: 'pointer' }}
-                                                onClick={() => media.media_type !== 'folder' && handlePreviewMedia(media)}
-                                            />
-                                        ) : null}
-                                    </TableCell>
-                                    <TableCell>{media.original_filename}</TableCell>                                  
-                                    <TableCell>
-                                        <Chip
-                                            label={media.media_type}
-                                            size="small"
-                                            color="primary"
-                                            variant="outlined"
-                                        />
-                                    </TableCell>
-                                    <TableCell>{media.file_size ? `${(media.file_size / 1024 / 1024).toFixed(2)} MB` : ''}</TableCell>
-                                    <TableCell>{media.upload_time ? new Date(media.upload_time).toLocaleString() : ''}</TableCell>
-                                    <TableCell>
-                                        <Button 
-                                            variant="contained" 
-                                            color="primary" 
-                                            size="small"
-                                            onClick={() => handleRunWithModel(media)}
-                                            disableElevation
-                                            sx={{ textTransform: "none" }}
-                                        >
-                                            Run with Model
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
+      <div className="p-4">
+        <div className="flex justify-between items-center mb-4">
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <Typography variant="h5" component="div">
+              Media Management
+            </Typography>
+            <FilePathDisplay filePath={currentPath} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <NavigateToParentButton
+              handleNavigateToParent={handleNavigateToParent}
+              currentFolderId={currentFolderId}
+            />
+            {selectedMedias.length > 0 && (
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={() => setIsDeleteModalOpen(true)}
+                disableElevation
+                sx={{ mr: 2, textTransform: "none" }}
+              >
+                Delete ({selectedMedias.length})
+              </Button>
             )}
-
-            <Box display="flex" justifyContent="end" mt={4}>
-                <Pagination 
-                    count={totalPages} 
-                    page={page} 
-                    onChange={(_, value) => setPage(value)} 
-                />
-            </Box>
-
-
-            <UploadFolderModal
-                isOpen={isUploadFolderModalOpen}
-                onClose={() => setIsUploadFolderModalOpen(false)}
-                onUpload={fetchMediaItems}
-                allowFoldersOnly={true}
+            <UploadMediaModal
+              isOpen={isUploadModalOpen}
+              onClose={() => setIsUploadModalOpen(false)}
+              onUpload={() => fetchMediaItems(currentFolderId)}
+              currentPath={currentPath}
+              currentFolderId={currentFolderId}
             />
-
-            <Dialog
-                open={isDeleteModalOpen}
-                onClose={() => setIsDeleteModalOpen(false)}
+            <Button
+              variant="outlined"
+              color="secondary"
+              onClick={handleNewFolder}
+              disableElevation
+              sx={{ ml: 2, textTransform: "none" }}
             >
-                <DialogTitle>{"Confirm Deletion"}</DialogTitle>
-                <DialogContent>
-                    <DialogContentText>
-                        Are you sure you want to delete {selectedMedias.length} selected media items? This action cannot be undone.
-                    </DialogContentText>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setIsDeleteModalOpen(false)} color="primary" disableElevation sx={{ textTransform: "none" }}>
-                        Cancel
-                    </Button>
-                    <Button onClick={handleDeleteMedias} color="error" autoFocus disableElevation sx={{ textTransform: "none" }}>
-                        Delete
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            <Dialog
-                open={isNewFolderModalOpen}
-                onClose={() => setIsNewFolderModalOpen(false)}
-            >
-                <DialogTitle>Create Folder</DialogTitle>
-                <DialogContent>
-                    <TextField
-                        autoFocus
-                        margin="dense"
-                        label="Folder Name"
-                        type="text"
-                        fullWidth
-                        variant="standard"
-                        value={newFolderName}
-                        onChange={(e) => setNewFolderName(e.target.value)}
-                    />
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setIsNewFolderModalOpen(false)} color="primary">
-                        Cancel
-                    </Button>
-                    <Button onClick={handleCreateFolder} color="primary">
-                        OK
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            <Modal
-                open={isPreviewModalOpen}
-                onClose={() => setIsPreviewModalOpen(false)}
-                aria-labelledby="preview-modal-title"
-                aria-describedby="preview-modal-description"
-            >
-                <Box sx={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    width: '80%',
-                    maxHeight: '80%',
-                    bgcolor: 'background.paper',
-                    boxShadow: 24,
-                    p: 4,
-                    overflow: 'auto'
-                }}>
-                    <Typography id="preview-modal-title" variant="h6" component="h2">
-                        Media Preview
-                    </Typography>
-                    {previewMedia && (
-                        <Box sx={{ mt: 2 }}>
-                            {previewMedia.media_type === 'image' ? (
-                                <img
-                                    src={`${process.env.REACT_APP_API_URL}/yolo-files/${previewMedia.minio_filename}`}
-                                    alt={previewMedia.name}
-                                    style={{ maxWidth: '100%', maxHeight: '500px', objectFit: 'contain' }}
-                                />
-                            ) : (
-                                <video
-                                    src={`${process.env.REACT_APP_API_URL}/yolo-files/${previewMedia.minio_filename}`}
-                                    controls
-                                    style={{ maxWidth: '100%', maxHeight: '500px' }}
-                                />
-                            )}
-                            <Typography variant="body1" sx={{ mt: 2 }}>
-                                Name: {previewMedia.name}
-                            </Typography>
-                            <Typography variant="body1">
-                                Description: {previewMedia.description || 'No description'}
-                            </Typography>
-                            <Typography variant="body1">
-                                Type: {previewMedia.media_type}
-                            </Typography>
-                            <Typography variant="body1">
-                                Size: {formatFileSize(previewMedia.file_size)}
-                            </Typography>
-                        </Box>
-                    )}
-                </Box>
-            </Modal>
-            <RunWithModelModal
-                isOpen={isRunWithModelModalOpen}
-                onClose={() => setIsRunWithModelModalOpen(false)}
-                media={selectedMedia}
-                models={models}
-                onRunTask={handleRunTask}
-            />
+              New Folders
+            </Button>
+          </div>
         </div>
+        {isLoading ? (
+          <Box
+            display="flex"
+            justifyContent="center"
+            alignItems="center"
+            height="64"
+          >
+            <CircularProgress />
+          </Box>
+        ) : mediaItems.length === 0 ? (
+          <Paper className="p-4 text-center">
+            <Typography variant="h6">No media items found</Typography>
+            <Typography variant="body1">
+              Upload some media to get started
+            </Typography>
+          </Paper>
+        ) : (
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      indeterminate={
+                        selectedMedias.length > 0 &&
+                        selectedMedias.length < mediaItems.length
+                      }
+                      checked={
+                        mediaItems.length > 0 &&
+                        selectedMedias.length === mediaItems.length
+                      }
+                      onChange={(event) =>
+                        setSelectedMedias(
+                          event.target.checked
+                            ? mediaItems.map((item) => item._id)
+                            : []
+                        )
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>Preview</TableCell>
+                  <TableCell>Filename</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>Size</TableCell>
+                  <TableCell>Upload Time</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {mediaItems.map((media: Media) => (
+                  <TableRow
+                    key={media._id}
+                    hover
+                    sx={{
+                      "&:hover": { backgroundColor: "#e0f7fa" },
+                      backgroundColor:
+                        flashingRow === media._id ? "#ffeb3b" : "inherit",
+                    }}
+                    onDoubleClick={() => handleDoubleClickFolder(media)} // 双击事件
+                  >
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        checked={selectedMedias.includes(media._id)}
+                        onChange={() =>
+                          setSelectedMedias((prev) =>
+                            prev.includes(media._id)
+                              ? prev.filter((item) => item !== media._id)
+                              : [...prev, media._id]
+                          )
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {media.media_type === "folder" ? (
+                        <img
+                          src={`${process.env.REACT_APP_MINIO_URL}/yolo-files/folder_blue.png`}
+                          alt={media.original_filename}
+                          style={{
+                            width: "100px",
+                            height: "100px",
+                            objectFit: "contain",
+                            cursor: "pointer",
+                            backgroundColor: "#ffffff",
+                          }}
+                        />
+                      ) : media.media_type === "image" ? (
+                        <img
+                          src={`${process.env.REACT_APP_MINIO_URL}/yolo-files/${media.minio_filename}`}
+                          alt={media.name}
+                          style={{
+                            width: "100px",
+                            height: "100px",
+                            objectFit: "cover",
+                            cursor: "pointer",
+                          }}
+                          onClick={() =>
+                            media.media_type !== "folder" &&
+                            handlePreviewMedia(media)
+                          }
+                        />
+                      ) : media.media_type === "video" ? (
+                        <video
+                          src={`${process.env.REACT_APP_API_URL}/yolo-files/${media.minio_filename}`}
+                          style={{
+                            width: "100px",
+                            height: "100px",
+                            objectFit: "cover",
+                            cursor: "pointer",
+                          }}
+                          onClick={() =>
+                            media.media_type !== "folder" &&
+                            handlePreviewMedia(media)
+                          }
+                        />
+                      ) : null}
+                    </TableCell>
+                    <TableCell>{media.original_filename}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={media.media_type}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {media.file_size
+                        ? `${(media.file_size / 1024 / 1024).toFixed(2)} MB`
+                        : ""}
+                    </TableCell>
+                    <TableCell>
+                      {media.upload_time
+                        ? new Date(media.upload_time).toLocaleString()
+                        : ""}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        size="small"
+                        onClick={() => handleRunWithModel(media)}
+                        disableElevation
+                        sx={{ textTransform: "none" }}
+                      >
+                        Run with Model
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+
+        <Box display="flex" justifyContent="end" mt={4}>
+          <Pagination
+            count={totalPages}
+            page={page}
+            onChange={(_, value) => setPage(value)}
+          />
+        </Box>
+
+        <Dialog
+          open={isDeleteModalOpen}
+          onClose={() => setIsDeleteModalOpen(false)}
+        >
+          <DialogTitle>{"Confirm Deletion"}</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              Are you sure you want to delete {selectedMedias.length} selected
+              media items? This action cannot be undone.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button
+              onClick={() => setIsDeleteModalOpen(false)}
+              color="primary"
+              disableElevation
+              sx={{ textTransform: "none" }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeleteMedias}
+              color="error"
+              autoFocus
+              disableElevation
+              sx={{ textTransform: "none" }}
+            >
+              Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+          open={isNewFolderModalOpen}
+          onClose={() => setIsNewFolderModalOpen(false)}
+        >
+          <DialogTitle>Create Folder</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="Folder Name"
+              type="text"
+              fullWidth
+              variant="standard"
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button
+              onClick={() => setIsNewFolderModalOpen(false)}
+              color="primary"
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleCreateFolder} color="primary">
+              OK
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Modal
+          open={isPreviewModalOpen}
+          onClose={() => setIsPreviewModalOpen(false)}
+          aria-labelledby="preview-modal-title"
+          aria-describedby="preview-modal-description"
+        >
+          <Box
+            sx={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: "80%",
+              maxHeight: "80%",
+              bgcolor: "background.paper",
+              boxShadow: 24,
+              p: 4,
+              overflow: "auto",
+            }}
+          >
+            <Typography id="preview-modal-title" variant="h6" component="h2">
+              Media Preview
+            </Typography>
+            {previewMedia && (
+              <Box sx={{ mt: 2 }}>
+                {previewMedia.media_type === "image" ? (
+                  <img
+                    src={`${process.env.REACT_APP_API_URL}/yolo-files/${previewMedia.minio_filename}`}
+                    alt={previewMedia.name}
+                    style={{
+                      maxWidth: "100%",
+                      maxHeight: "500px",
+                      objectFit: "contain",
+                    }}
+                  />
+                ) : (
+                  <video
+                    src={`${process.env.REACT_APP_API_URL}/yolo-files/${previewMedia.minio_filename}`}
+                    controls
+                    style={{ maxWidth: "100%", maxHeight: "500px" }}
+                  />
+                )}
+                <Typography variant="body1" sx={{ mt: 2 }}>
+                  Name: {previewMedia.name}
+                </Typography>
+                <Typography variant="body1">
+                  Description: {previewMedia.description || "No description"}
+                </Typography>
+                <Typography variant="body1">
+                  Type: {previewMedia.media_type}
+                </Typography>
+                <Typography variant="body1">
+                  Size: {formatFileSize(previewMedia.file_size)}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </Modal>
+        <RunWithModelModal
+          isOpen={isRunWithModelModalOpen}
+          onClose={() => setIsRunWithModelModalOpen(false)}
+          media={selectedMedia}
+          models={models}
+          onRunTask={handleRunTask}
+        />
+      </div>
     );
 };
 

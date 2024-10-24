@@ -1,7 +1,6 @@
 # celery_worker.py
 
-import uuid
-from celery import Celery
+from celery import Celery,Task
 from celery.contrib.abortable import AbortableTask
 from celery.signals import task_prerun, task_postrun, task_success, task_failure, task_revoked
 import time
@@ -14,24 +13,12 @@ import cv2
 import io, json
 from minio import Minio
 import subprocess
-import logging
-import logging_loki
+from pydantic import ValidationError
+from celery_task_meta import YOLOTaskModel
+from apis.logger import get_logger
 
-# Loki 配置
-loki_handler = logging_loki.LokiHandler(
-    url="http://loki:3100/loki/api/v1/push",  # 替换为你的 Loki 实例地址
-    tags={"app": "yolotester_dev-backend-1"},
-    version="1",
-)
-
-# 清空日志处理器的旧消息
-loki_handler.flush()
-
-formatter = logging.Formatter('%(asctime)s - %(filename)s : %(funcName)s : [%(lineno)d] \n%(message)s')
-loki_handler.setFormatter(formatter)
-logger = logging.getLogger('my_log')
-logger.addHandler(loki_handler)
-logger.setLevel(logging.DEBUG)
+# 获取全局配置的 logger
+logger = get_logger()
 
 # 创建MongoDB客户端
 mongo_client = MongoClient('mongodb://mongo:27017/')
@@ -77,11 +64,6 @@ def update_collection(task_name, task_id, update_data):
             {'celery_task_id': task_id},
             {'$set': update_data}
         )
-
-# @task_prerun.connect
-# def task_prerun_handler(task_id, task, *args, **kwargs):
-#     update_data = {'status': 'RUNNING', 'start_time': time.time()}
-#     update_collection(task.name, task_id, update_data)
 
 @task_postrun.connect
 def task_postrun_handler(task_id, task, *args, retval=None, state=None, **kwargs):
@@ -224,61 +206,131 @@ def convert_video(self, video_id):
         )
         raise e
 
-@app.task(base=AbortableTask, bind=True, name='run_yolo_image')
-def run_yolo_image(self, inserted_id, media_id, model_id, detect_class_indices, conf=0.25, imgsz=(1088, 1920), augment=False):
-    logger.debug(f"开始处理照片 {media_id}")
+# 下载文件
+def download_file_from_minio(minio_client, bucket_name, minio_filename, local_filename):
     try:
-        media_info = media_collection.find_one({'_id': ObjectId(media_id)})
-        if not media_info:
-            raise Exception(f"File with id {media_id} not found")
+        minio_client.fget_object(bucket_name, minio_filename, local_filename)
+        logger.debug(f'File downloaded to: {local_filename}')
+        return local_filename
+    except Exception as e:
+        raise Exception(f"Failed to download file from MinIO: {e}")
 
+
+# 上传文件
+def upload_file_to_minio(minio_client, bucket_name, local_filepath, remote_filepath):
+    try:
+        minio_client.fput_object(bucket_name, remote_filepath, local_filepath)
+        logger.debug(f'File uploaded to: {remote_filepath}')
+    except Exception as e:
+        raise Exception(f"Failed to upload file to MinIO: {e}")
+
+
+# 删除本地文件
+def remove_local_file(filepath):
+    try:
+        os.remove(filepath)
+        logger.debug(f'Local file {filepath} deleted')
+    except FileNotFoundError:
+        logger.warning(f'Local file {filepath} not found for deletion')
+    except Exception as e:
+        raise Exception(f"Failed to delete local file {filepath}: {e}")
+
+
+# 更新任务状态
+def update_task_status(task_collection, task_id, update_fields):
+    try:
         task_collection.update_one(
-            {'_id': ObjectId(inserted_id)},
-            {'$set': {'celery_task_id': self.request.id, 'status': 'RUNNING'}}
+            {'_id': ObjectId(task_id)},
+            {'$set': update_fields}
+        )
+        logger.debug(f"Task {task_id} updated with {update_fields}")
+    except Exception as e:
+        raise Exception(f"Failed to update task {task_id}: {e}")
+
+
+# 处理 YOLO 预测
+def perform_yolo_prediction(model, local_filename, params: YOLOTaskModel):
+    try:
+        # YOLO 模型进行预测
+        results = model.predict(
+            local_filename, 
+            conf=params.conf, 
+            imgsz=(params.height,params.width), 
+            augment=params.augment, 
+            classes=params.detect_class_indices, 
+            device='cuda:0'
         )
 
-        # 从MinIO下载文件
-        minio_filename = media_info['minio_filename']
-        file_extension = os.path.splitext(minio_filename)[1]
-        unique_filename = f"{self.request.id}{file_extension}"
-        local_filename = f"/tmp/{unique_filename}"
-        minio_client.fget_object("yolo-files", minio_filename, local_filename)
-        logger.debug(f'local_filename : {local_filename}')
-
-        # 加载YOLO模型
-        model_info = model_collection.find_one({'_id': ObjectId(model_id)})
-        model = YOLO(model_info['model_path'])
-
-        # 进行预测
-        results = model.predict(local_filename, conf=conf, imgsz=imgsz, augment=augment, classes=detect_class_indices, device='cuda:0')
-
-        # 处理结果
+        # 处理预测结果
         im_array = results[0].plot(font_size=8, line_width=1)
         im = Image.fromarray(im_array[..., ::-1])  # RGB PIL image
 
         # 保存结果图像       
-        result_filename = f"result_{unique_filename}"
-        result_filename_relative_path = f"results/{result_filename}"
-        os.makedirs(os.path.dirname(result_filename_relative_path), exist_ok=True)
-        im.save(result_filename_relative_path)
+        result_filename = f"result_{os.path.basename(local_filename)}"
+        # 从环境变量获取 RESULT_DIR，默认为 '/tmp/results' 如果未设置
+        RESULT_DIR = os.getenv('RESULT_DIR', '/tmp/results')
+        result_filepath = os.path.join(RESULT_DIR, result_filename)
+        os.makedirs(os.path.dirname(result_filepath), exist_ok=True)
+        im.save(result_filepath)
 
-        # 将结果上传到MinIO
-        minio_client.fput_object("yolo-files", f"results/{result_filename}", result_filename_relative_path)
-
-        # 更新任务状态
-        task_collection.update_one(
-            {'_id': ObjectId(inserted_id)},
-            {'$set': {'progress': 100, 'result_file': f"results/{result_filename}"}}
-        )
-
-        # 清理临时文件
-        os.remove(local_filename)
-        os.remove(result_filename_relative_path)
-
-        print(f"照片 {media_id} 处理完成")
-        return f"照片 {media_id} 处理完成，结果文件：results/{result_filename}"
+        logger.debug(f"Result saved at: {result_filepath}")
+        return result_filepath
     except Exception as e:
-        print(f"照片 {media_id} 处理出错: {str(e)}")
+        raise Exception(f"YOLO prediction failed: {e}")
+
+
+# Celery 任务
+@app.task(base=Task, bind=True, name='run_yolo_image')
+def run_yolo_image(self, task_params: dict):
+    try:
+        # 验证参数
+        try:
+            params = YOLOTaskModel(**task_params)
+            logger.error(f"Start processing image : {params}")
+        except ValidationError as e:
+            raise Exception(f"Invalid task parameters: {e}")
+        
+        logger.debug(f"Start processing image {params.media_id}")
+
+        # 获取媒体信息
+        media_info = media_collection.find_one({'_id': ObjectId(params.media_id)})
+        if not media_info:
+            raise Exception(f"File with id {params.media_id} not found")
+        
+        # 更新任务状态为 RUNNING
+        update_task_status(task_collection, params.inserted_id, {'celery_task_id': self.request.id, 'status': 'RUNNING'})
+
+        # 下载文件
+        minio_filename = media_info['minio_filename']
+        file_extension = os.path.splitext(minio_filename)[1]
+        unique_filename = f"{self.request.id}{file_extension}"
+        local_filename = download_file_from_minio(minio_client, "yolo-files", minio_filename, f"/tmp/{unique_filename}")
+
+        # 加载 YOLO 模型
+        model_info = model_collection.find_one({'_id': ObjectId(params.model_id)})
+        if not model_info:
+            raise Exception(f"Model with id {params.model_id} not found")
+        
+        model = YOLO(model_info['model_path'])
+
+        # 执行 YOLO 预测
+        result_filepath = perform_yolo_prediction(model, local_filename, params)
+
+        # 上传结果文件到 MinIO
+        upload_file_to_minio(minio_client, "yolo-files", result_filepath, f"results/{os.path.basename(result_filepath)}")
+
+        # 更新任务状态为完成
+        update_task_status(task_collection, params.inserted_id, {'progress': 100, 'result_file': f"results/{os.path.basename(result_filepath)}"})
+
+        # 清理本地文件
+        remove_local_file(local_filename)
+        remove_local_file(result_filepath)
+
+        logger.info(f"Image {params.media_id} processing completed successfully")
+        return f"Image {params.media_id} processing completed, result file: results/{os.path.basename(result_filepath)}"
+    
+    except Exception as e:
+        logger.error(f"Error processing image {params.media_id}: {str(e)}", exc_info=True)
         raise
 
 @app.task(base=AbortableTask, bind=True, name='run_yolo_video')

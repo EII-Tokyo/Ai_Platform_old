@@ -24,10 +24,11 @@ services:
       - ./backend:/backend
     environment:
       - UDEV=1
-      - MINIO_ACCESS_KEY=CcN6vNP3IhhYJGXxRFA8
-      - MINIO_SECRET_KEY=laifgTSxOuMbnSe0eNXRLN1C6DzOHNkQEJ4a6Wo6
+      - MINIO_ACCESS_KEY=SlDE1OdZIQpyOairqTer
+      - MINIO_SECRET_KEY=zzkVFBZ4akPLdeGaKuMWdgyCpCCrqrbA5vmuIGia
       - NVIDIA_VISIBLE_DEVICES=all  # 让容器可以访问所有 GPU
       - NVIDIA_DRIVER_CAPABILITIES=all  # 让容器具有完整的 GPU 功能（包括计算、视频等）
+      - RESULT_DIR=/tmp/results
     deploy:
       resources:
         reservations:
@@ -41,23 +42,23 @@ services:
     # image: lyl472324464/ship:backend-amd64
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.prod
     restart: always
     ports:
       - "8000"
-    command: python3 main.py
-    # command: /backend/start.sh
+    command: sh -c "python3 main.py && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
     privileged: true
+    working_dir: /backend
     volumes:
       - /dev:/dev
       - /run/udev:/run/udev:ro
-      - ./backend:/backend
     devices:
       - /dev/bus/usb:/dev/bus/usb
     environment:
       - UDEV=1
-      - MINIO_ACCESS_KEY=tvl0IC3ACVbAYotfTPgq
-      - MINIO_SECRET_KEY=qBLYfpiVGUGNvuAsGzrENzjdfVWz6Yn19UUvOgm3
+      - MINIO_ACCESS_KEY=SlDE1OdZIQpyOairqTer
+      - MINIO_SECRET_KEY=zzkVFBZ4akPLdeGaKuMWdgyCpCCrqrbA5vmuIGia
+      - DEFAULT_BUCKET=yolo-files
       # - LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1
     depends_on:
       # tritonserver:
@@ -68,12 +69,6 @@ services:
         reservations:
           devices:
             - capabilities: [ gpu ]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f -X POST http://localhost:8000/api/health || exit 1"]
-      interval: 30s     # 每 30 秒检查一次
-      timeout: 10s      # 健康检查的超时时间为 10 秒
-      retries: 3        # 连续失败 3 次，认为服务不健康
-    ipc: host
     runtime: nvidia
 
   frontend:
@@ -81,8 +76,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    volumes:
-      - ./frontend:/frontend
+    # 生产环境下前端不能跟着代码变化
+    # volumes:
+    #   - ./frontend:/frontend
     restart: always
     # command: bash -c "nginx && yarn start"
     command: bash -c 'nginx -g "daemon off;"'
@@ -98,6 +94,7 @@ services:
       MINIO_ROOT_USER: admin
       MINIO_ROOT_PASSWORD: password
       MINIO_SERVER_URL: http://minio:9000
+      DEFAULT_BUCKET: yolo-files
       # MINIO_BROWSER_REDIRECT_URL: http://localhost:9092
       # MINIO_BROWSER_REDIRECT_URL: http://192.168.1.10/minio/ui
     command: server --console-address ":9090" /data
@@ -105,7 +102,7 @@ services:
       - "9000"
       - "9090:9090"
     volumes:
-      - ./minio/data:/data
+      - ./minio/prod_data:/data
 
   loki:
     image: grafana/loki:2.6.1
@@ -114,12 +111,7 @@ services:
       - "3100"
     volumes:
       # directory must be created first, with uid:gid 10001:10001
-      - ./volumes/loki:/loki
-    healthcheck:
-      test: ["CMD", "wget","--spider", "http://localhost:3100/ready"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - ./volumes/prod_loki:/loki
 
   promtail:
     image: grafana/promtail:2.6.1
@@ -144,9 +136,6 @@ services:
       # automatically configure the loki datasource
       - ./grafana/provisioning/:/etc/grafana/provisioning/
       - ./grafana/grafana.ini:/etc/grafana/grafana.ini
-    depends_on:
-      loki:
-        condition: service_healthy
 
   redis:
     image: redis:6.2.6
@@ -161,8 +150,3 @@ services:
       - 27017:27017
     volumes:
       - ./mongo/data:/data/db
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 27018"]
-      interval: 10s
-      timeout: 5s
-      retries: 3

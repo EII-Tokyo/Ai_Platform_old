@@ -1,0 +1,23 @@
+# 在 Dockerfile.dev 中，使用 React 自带的开发服务器来提供服务，
+# 使用 yarn start 启动。开发环境中不需要将构建的内容拷贝到特定的路径，
+# 因为热加载是开发环境的核心需求。
+
+FROM node:18-alpine
+
+# 安装 wget 和 curl
+RUN apk add --no-cache wget curl
+
+# 创建工作目录
+WORKDIR /frontend
+
+# 复制代码到工作目录
+COPY . .
+
+# 安装 Yarn 和项目依赖
+RUN yarn install
+
+# 暴露 React 开发服务器的端口
+EXPOSE 3000
+
+# 启动 React 开发服务器
+CMD ["yarn", "start"]
