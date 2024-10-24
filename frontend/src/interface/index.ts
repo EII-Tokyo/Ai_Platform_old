@@ -127,6 +127,8 @@ export interface ITaskRequest {
   augment: boolean;
   detect_classes: string[];
   detect_class_indices: number[];
+  parent_id: string;
+  parent_path: string;
 }
 
 // 用于更新任务的接口
