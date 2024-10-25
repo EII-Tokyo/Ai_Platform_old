@@ -1,23 +1,31 @@
-# celery_worker.py
-
-from celery import Celery,Task
-from celery.contrib.abortable import AbortableTask
-from celery.signals import task_prerun, task_postrun, task_success, task_failure, task_revoked
-import time
-from pymongo import MongoClient
-from bson.objectid import ObjectId
+# 标准库导入
 import os
-from ultralytics import YOLO
+import time
+import json
+import subprocess
 from PIL import Image
 import cv2
-import io, json
-from minio import Minio
-import subprocess
-from pydantic import ValidationError
-from celery_task_meta import YOLOTaskModel
-from apis.logger import get_logger
 
-# 获取全局配置的 logger
+# 第三方库导入
+from bson.objectid import ObjectId
+from pymongo import MongoClient
+from minio import Minio
+from celery import Celery, Task
+from celery.contrib.abortable import AbortableTask
+from celery.signals import (
+    task_postrun,
+    task_success,
+    task_failure,
+    task_revoked
+)
+from pydantic import ValidationError
+from ultralytics import YOLO
+
+# 自定义模块导入
+from apis.logger import get_logger
+from apis.celery_task_meta import YOLOTaskModel
+
+# 初始化logger
 logger = get_logger()
 
 # 创建MongoDB客户端
@@ -48,6 +56,7 @@ app.conf.update(
     worker_concurrency=4,
     task_acks_late=True,
     task_reject_on_worker_lost=True,
+    broker_connection_retry_on_startup=True,  # 添加此行
 )
 
 def update_collection(task_name, task_id, update_data):
@@ -286,7 +295,7 @@ def run_yolo_image(self, task_params: dict):
         # 验证参数
         try:
             params = YOLOTaskModel(**task_params)
-            logger.error(f"Start processing image : {params}")
+            logger.warning(f"Start processing image : {params}")
         except ValidationError as e:
             raise Exception(f"Invalid task parameters: {e}")
         
@@ -326,7 +335,7 @@ def run_yolo_image(self, task_params: dict):
         remove_local_file(local_filename)
         remove_local_file(result_filepath)
 
-        logger.info(f"Image {params.media_id} processing completed successfully")
+        logger.debug(f"Image {params.media_id} processing completed successfully")
         return f"Image {params.media_id} processing completed, result file: results/{os.path.basename(result_filepath)}"
     
     except Exception as e:
@@ -334,27 +343,36 @@ def run_yolo_image(self, task_params: dict):
         raise
 
 @app.task(base=AbortableTask, bind=True, name='run_yolo_video')
-def run_yolo_video(self, inserted_id, media_id, model_id, detect_class_indices, conf=0.25, imgsz=(1088, 1920), augment=False):
-    print(f"开始处理视频 {media_id}")
+def run_yolo_video(self, task_params: dict):
     try:
-        media_info = media_collection.find_one({'_id': ObjectId(media_id)})
+        # 验证参数
+        try:
+            params = YOLOTaskModel(**task_params)
+            logger.debug(f"Start processing video: {params}")
+        except ValidationError as e:
+            raise Exception(f"Invalid task parameters: {e}")
+
+        logger.debug(f"Start processing video {params.media_id}")
+
+        # 获取媒体信息
+        media_info = media_collection.find_one({'_id': ObjectId(params.media_id)})
         if not media_info:
-            raise Exception(f"File with id {media_id} not found")
+            raise Exception(f"File with id {params.media_id} not found")
+        
+        # 更新任务状态为 RUNNING
+        update_task_status(task_collection, params.inserted_id, {'celery_task_id': self.request.id, 'status': 'RUNNING'})
 
-        task_collection.update_one(
-            {'_id': ObjectId(inserted_id)},
-            {'$set': {'celery_task_id': self.request.id, 'status': 'RUNNING'}}
-        )
-
-        # 从MinIO下载文件
+        # 下载文件
         minio_filename = media_info['minio_filename']
         file_extension = os.path.splitext(minio_filename)[1]
         unique_filename = f"{self.request.id}{file_extension}"
-        local_filename = f"/tmp/{unique_filename}"
-        minio_client.fget_object("yolo-files", minio_filename, local_filename)
+        local_filename = download_file_from_minio(minio_client, "yolo-files", minio_filename, f"/tmp/{unique_filename}")
 
-        # 加载YOLO模型
-        model_info = model_collection.find_one({'_id': ObjectId(model_id)})
+        # 加载 YOLO 模型
+        model_info = model_collection.find_one({'_id': ObjectId(params.model_id)})
+        if not model_info:
+            raise Exception(f"Model with id {params.model_id} not found")
+        
         model = YOLO(model_info['model_path'])
 
         # 设置视频写入器
@@ -363,10 +381,10 @@ def run_yolo_video(self, inserted_id, media_id, model_id, detect_class_indices, 
         output_filename_relative_path = f"results/{output_filename}"
         os.makedirs(os.path.dirname(output_filename_relative_path), exist_ok=True)
         fps = cv2.VideoCapture(local_filename).get(cv2.CAP_PROP_FPS)
-        out = cv2.VideoWriter(output_filename_relative_path, fourcc, fps, (imgsz[1], imgsz[0]))
+        out = cv2.VideoWriter(output_filename_relative_path, fourcc, fps, (params.width, params.height))
 
         # 进行预测
-        results = model(local_filename, stream=True, conf=conf, imgsz=imgsz, augment=augment, classes=detect_class_indices, device='cuda:0')
+        results = model(local_filename, stream=True, conf=params.conf, imgsz=(params.height, params.width), augment=params.augment, classes=params.detect_class_indices, device='cuda:0')
 
         frame_count = 0
         total_frames = int(cv2.VideoCapture(local_filename).get(cv2.CAP_PROP_FRAME_COUNT))
@@ -377,17 +395,14 @@ def run_yolo_video(self, inserted_id, media_id, model_id, detect_class_indices, 
 
             # 处理每一帧
             im_array = result.plot()
-            frame = cv2.resize(im_array, (imgsz[1], imgsz[0]))
+            frame = cv2.resize(im_array, (params.width, params.height))
             out.write(frame)
 
             # 更新进度
-            task_collection.update_one(
-                {'_id': ObjectId(inserted_id)},
-                {'$set': {'progress': progress}}
-            )
+            update_task_status(task_collection, params.inserted_id, {'progress': progress})
 
             if self.is_aborted():
-                print(f"视频 {media_id} 处理被中止")
+                logger.debug(f"Video {params.media_id} processing aborted")
                 out.release()
                 return "Task aborted"
 
@@ -402,25 +417,20 @@ def run_yolo_video(self, inserted_id, media_id, model_id, detect_class_indices, 
         ]
         subprocess.run(ffmpeg_command, check=True)
 
-        # 将结果上传到MinIO
-        minio_client.fput_object("yolo-files", f"results/{output_filename}", transcoded_output)
+        # 上传结果文件到 MinIO
+        upload_file_to_minio(minio_client, "yolo-files", transcoded_output, f"results/{output_filename}")
 
         # 更新任务状态
-        task_collection.update_one(
-            {'_id': ObjectId(inserted_id)},
-            {'$set': {'progress': 100, 'result_file': f"results/{output_filename}"}}
-        )
+        update_task_status(task_collection, params.inserted_id, {'progress': 100, 'result_file': f"results/{output_filename}"})
 
         # 清理临时文件
-        os.remove(local_filename)
-        os.remove(output_filename_relative_path)
-        os.remove(transcoded_output)
+        remove_local_file(local_filename)
+        remove_local_file(output_filename_relative_path)
+        remove_local_file(transcoded_output)
 
-        print(f"视频 {media_id} 处理完成")
-        return f"视频 {media_id} 处理完成，结果文件：results/{output_filename}"
+        logger.debug(f"Video {params.media_id} processing completed successfully")
+        return f"Video {params.media_id} processing completed, result file: results/{output_filename}"
+    
     except Exception as e:
-        print(f"视频 {media_id} 处理出错: {str(e)}")
+        logger.error(f"Error processing video {params.media_id}: {str(e)}", exc_info=True)
         raise
-
-if __name__ == '__main__':
-    app.worker_main(["worker", "--loglevel=info"])

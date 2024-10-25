@@ -25,6 +25,21 @@ const UploadMediaModal: React.FC<UploadMediaModalProps> = ({ isOpen, onClose, on
     setProgress(0); // 重置进度
   };
 
+  // 检查图片是否损坏
+  const checkIfImageBroken = (file: File) => {
+    return new Promise<boolean>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => resolve(false); // 图片加载成功，不损坏
+        img.onerror = () => resolve(true); // 图片加载失败，损坏
+        img.src = reader.result as string;
+      };
+      reader.onerror = () => resolve(true); // 读取失败，视为损坏
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
     const validFiles = Array.from(files).filter((file) => {
@@ -68,6 +83,7 @@ const UploadMediaModal: React.FC<UploadMediaModalProps> = ({ isOpen, onClose, on
           body: JSON.stringify({ files: fileNames }),
         }
       );
+
 
       if (!response.ok) {
         throw new Error(`API responded with status ${response.status}`);

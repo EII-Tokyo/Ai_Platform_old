@@ -1,16 +1,16 @@
 import os
 import io
 import time
-from fastapi import Body, HTTPException, APIRouter, BackgroundTasks,Query,WebSocket, WebSocketDisconnect
+from fastapi import Body, HTTPException, APIRouter, BackgroundTasks,Query
 from typing import List, Optional
 from models.models import media_collection
 from pydantic import Field,BaseModel
 from bson.objectid import ObjectId
-from celery_worker import convert_video
+from apis.celery_worker import convert_video
 from PIL import Image
-from .logger import get_logger
-from .minio_client_setup import setup_minio_client
-from .utils import get_folder_info
+from apis.logger import get_logger
+from apis.minio_client_setup import setup_minio_client
+from apis.utils import get_folder_info
 
 # 获取全局配置的 logger
 logger = get_logger()
@@ -195,31 +195,33 @@ async def get_medias(
 
 @router.delete("/delete_medias")
 async def delete_medias(ids: List[str] = Body(...)):
-    # try:
+    try:
         # Convert string ids to ObjectId
+        logger.debug(f'ids = {ids}')
         object_ids = [ObjectId(id) for id in ids]
 
         # Find the documents to get MinIO filenames before deletion
         medias_to_delete = media_collection.find({"_id": {"$in": object_ids}})
-
+ 
         minio_filenames = []
         for media in medias_to_delete:
+            logger.debug(f'current media : {media}') 
             if 'minio_filename' in media:
                 minio_filenames.append(media['minio_filename'])
 
         # Delete the documents from MongoDB
         result = media_collection.delete_many({"_id": {"$in": object_ids}})
+        logger.debug(f'filenames : {minio_filenames}')
 
         # Delete the files from MinIO
-        for filename in minio_filenames:
-            minio_wrap.delete_files(filename)
+        minio_wrap.delete_files(minio_filenames)
 
         return {
             "deleted_count": result.deleted_count,
             "message": f"Successfully deleted {result.deleted_count} media(s)"
         }
-    # except Exception as e:
-    #     raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # 定义用于创建新文件夹的模型
 class FolderCreateRequest(BaseModel):
@@ -242,10 +244,21 @@ async def medias_create_new_folder(folder: FolderCreateRequest):
             path_list.append(parent.get('original_filename'))
             parent_id = parent['parent_id']
 
-
         # 添加根节点 /A/B/C/D/filename
         full_path = os.sep.join([''] + path_list[::-1] + [folder.name])
 
+        # 检查是否已经存在相同 full_path 且类型为 folder 的记录
+        existing_folder = media_collection.find_one({"full_path": full_path, "media_type": "folder"})
+        if existing_folder:
+            msg = {
+                "message": "Folder with the same name already exists, creation failed.",
+                "folder_id": str(existing_folder["_id"]),
+                "flag": False  # 失败，flag 设置为 False
+            }
+            logger.error(msg)
+            return msg
+
+        # 如果不存在同名文件夹，创建新文件夹
         result = media_collection.insert_one({
             "name": folder.name,
             "description": folder.description,
@@ -269,7 +282,13 @@ async def medias_create_new_folder(folder: FolderCreateRequest):
             "error_message": ""
         })
 
-        return {"message": "Folder created successfully", "folder_id": str(result.inserted_id)}
+        msg = {
+            "message": "Folder created successfully",
+            "folder_id": str(result.inserted_id),
+            "flag": True  # 成功，flag 设置为 True
+        }
+        logger.debug(msg)
+        return msg
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

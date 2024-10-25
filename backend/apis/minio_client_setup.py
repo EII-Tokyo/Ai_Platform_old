@@ -21,9 +21,12 @@ class MinioClientWrapper:
 
         for filename in filenames:
             try:
-                self.client.remove_object(self.bucket, filename)
-                logger.debug(f"File {filename} deleted successfully.")
-                deleted_count += 1
+                # folder 的 filename 为空
+                if filename and filename != '':
+                    logger.debug(f'filename : {filename}')
+                    self.client.remove_object(self.bucket, filename)
+                    logger.debug(f"File {filename} deleted successfully.")
+                    deleted_count += 1
             except S3Error as e:
                 logger.debug(f"Error deleting file {filename} from MinIO: {str(e)}")
 

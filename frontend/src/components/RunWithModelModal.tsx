@@ -23,7 +23,9 @@ const RunWithModelModal: React.FC<RunWithModelModalProps> = ({ isOpen, onClose, 
         detect_class_indices: [] as number[],
         width: 1920,
         height: 1088,
-        augment: false
+        augment: false,
+        parent_id: '',
+        parent_path: ''
     });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);

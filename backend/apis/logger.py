@@ -3,8 +3,8 @@ import logging_loki
 
 class ColoredFormatter(logging.Formatter):
     COLORS = {
-        'DEBUG': "\033[0;32m",  # Green
-        'INFO': "\033[0;34m",   # Bright Blue
+        'DEBUG': "\033[0;32m",  # white
+        'INFO': "\033[0;34m",   # Green
         'WARNING': "\033[0;33m",  # Yellow
         'ERROR': "\033[0;31m",   # Red
         'CRITICAL': "\033[1;31m",  # Bright Red

@@ -31,8 +31,9 @@ const MediaManagement = () => {
     const [currentPath, setCurrentPath] = useState("/"); // 当前文件夹名
     const [currentFolderId, setCurrentFolderId] = useState<string>('root'); // 当前文件夹的ID
     const [flashingRow, setFlashingRow] = useState<string | null>(null); // 用于闪烁背景的行 ID
+    const [createFolderError, setCreateFolderError] = useState(''); // 存储错误信息
 
-    const handleAddFolder = async (folderName: string, uploadTime: number) => {
+    const handleAddMediasFolder = async (folderName: string, uploadTime: number) => {
         const newFolder: Media = {
             _id: `folder-${Date.now()}`, // 使用时间戳作为临时ID
             name: folderName,
@@ -69,10 +70,13 @@ const MediaManagement = () => {
             });
 
             if (response.status === 200) {
-                setMediaItems((prevMediaItems) => [
-                    { ...newFolder, _id: response.data.folder_id },
-                    ...prevMediaItems
-                ]);
+                if (response.data.flag === true) {
+                  setMediaItems((prevMediaItems) => [
+                      { ...newFolder, _id: response.data.folder_id },
+                      ...prevMediaItems
+                  ]);
+                }
+                return response.data
             } else {
                 console.error('Failed to create folder');
             }
@@ -87,6 +91,7 @@ const MediaManagement = () => {
             const response = await fetch(`${process.env.REACT_APP_API_URL}/api/medias?limit=${limit}&page_num=${page}${folderId ? `&folder_id=${folderId}` : ''}`);
             if (response.ok) {
                 const data = await response.json();
+                console.log(data.medias);
                 setMediaItems(data.medias);
                 setTotalPages(data.total_pages);
                 setCurrentFolderId(folderId);
@@ -156,11 +161,6 @@ const MediaManagement = () => {
         );
 
         if (response.status === 200) {
-          // setTasks((prevTaskItems : Task[]) => [
-          //   { ...newTaskFolder, _id: response.data.folder_id },
-          //   ...prevTaskItems,
-          // ]);
-
           return response.data.folder_id;
         } else {
           console.error("Failed to create task folder");
@@ -229,7 +229,6 @@ const MediaManagement = () => {
 
                     const promises = response.data.map(async (item: any) => {
                       params.media_id = item._id;
-                      params.media_type = 'image';
                       params.parent_id = folderId;
       
                       await runYoloTask(params);
@@ -250,6 +249,21 @@ const MediaManagement = () => {
 
             } else {
                 // 直接执行单个 YOLO 任务
+                console.log('start one task ....');
+                console.log(params);
+                let folderId;
+                if (selectedMedia.parent_id !== "root") {
+                  folderId = await handleAddTaskFolder(
+                    selectedMedia._id,
+                    selectedMedia.original_filename,
+                    selectedMedia.full_path ?? '',
+                    selectedMedia.parent_id ?? ''
+                  );
+
+                  console.log('folder_id :', folderId);
+                } else {
+                  folderId = "root";
+                }
                 await runYoloTask(params);
             }
     
@@ -263,19 +277,28 @@ const MediaManagement = () => {
     
     const handleNewFolder = () => {
         setIsNewFolderModalOpen(true);
+        setCreateFolderError(''); // 打开对话框时清除错误信息
     };
 
     const handleCreateFolder = async () => {
         if (newFolderName.trim()) {
-            await handleAddFolder(newFolderName, Date.now());
-            fetchMediaItems(currentFolderId); // Refresh the media items after adding the folder
+          const result = await handleAddMediasFolder(newFolderName, Date.now());
+          console.log(result);
+
+          if (!result.flag) {
+            setCreateFolderError('Folder with the same name already exists'); // 设置错误信息
+          } else {
+            setCreateFolderError(''); // 清除错误信息
+            fetchMediaItems(currentFolderId); // 刷新文件夹内容
             setNewFolderName('');
-            setIsNewFolderModalOpen(false);
+            setIsNewFolderModalOpen(false); // 关闭对话框
+          }
         }
     };
 
     const handleDeleteMedias = async () => {
         try {
+            console.log(selectedMedia);
             const response = await fetch(`${process.env.REACT_APP_API_URL}/api/delete_medias`, {
                 method: 'DELETE',
                 headers: {
@@ -601,7 +624,10 @@ const MediaManagement = () => {
               fullWidth
               variant="standard"
               value={newFolderName}
-              onChange={(e) => setNewFolderName(e.target.value)}
+              onChange={(e) => {setNewFolderName(e.target.value);
+                setCreateFolderError('');}}
+              error={!!createFolderError} // 设置错误状态
+              helperText={createFolderError} // 错误提示文本
             />
           </DialogContent>
           <DialogActions>

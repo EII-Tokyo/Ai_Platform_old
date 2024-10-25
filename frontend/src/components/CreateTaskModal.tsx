@@ -25,7 +25,9 @@ const CreateTaskModal = ({
         height: 1088,
         augment: false,
         detect_classes: [] as string[],
-        detect_class_indices: [] as number[]
+        detect_class_indices: [] as number[],
+        parent_id: "some_parent_id",
+        parent_path: "some/parent/path"
     });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);

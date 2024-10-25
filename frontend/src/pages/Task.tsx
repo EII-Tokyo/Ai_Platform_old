@@ -243,9 +243,10 @@ const TaskManagement = () => {
     event.stopPropagation();
 
     try {
+      console.log(`${process.env.REACT_APP_MINIO_URL}/yolo-files/${task.result_file}`);
       // 获取文件内容
       const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/yolo-files/${task.result_file}`
+        `${process.env.REACT_APP_MINIO_URL}/yolo-files/${task.result_file}`
       );
       const blob = await response.blob(); // 将文件内容转换为 blob
 
@@ -290,12 +291,9 @@ const TaskManagement = () => {
       // 循环遍历文件夹中的所有任务项并下载文件
       for (const item of tasksInFolder) {
         if (item.result_file) {
-          const fileResponse = await fetch(`${process.env.REACT_APP_API_URL}/yolo-files/${item.result_file}`);
-          if (!fileResponse.ok) {
-            console.error(`Failed to download file: ${item.result_file}`);
-            continue;
-          }
-
+          const fileResponse = await fetch(
+            `${process.env.REACT_APP_MINIO_URL}/yolo-files/${item.result_file}`
+          );
           const blob = await fileResponse.blob(); // 下载图片内容
 
           // 添加到 ZIP 文件中

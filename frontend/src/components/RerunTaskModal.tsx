@@ -24,7 +24,9 @@ const RerunTaskModal: React.FC<RerunTaskModalProps> = ({ isOpen, onClose, select
         height: 640,
         augment: false,
         detect_classes: [] as string[],
-        detect_class_indices: [] as number[]
+        detect_class_indices: [] as number[],
+        parent_id: '',
+        parent_path: ''
     });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -41,7 +43,9 @@ const RerunTaskModal: React.FC<RerunTaskModalProps> = ({ isOpen, onClose, select
                 augment: selectedTask.augment,
                 media_type: selectedTask.media_type,
                 detect_classes: selectedTask.detect_classes,
-                detect_class_indices: [] 
+                detect_class_indices: [],
+                parent_id: '',
+                parent_path: ''
             });
         }
     }, [selectedTask, models]);

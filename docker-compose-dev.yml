@@ -8,6 +8,7 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - FLOWER_PORT=5555
+      - TZ=Asia/Tokyo
     depends_on:
       - redis
 
@@ -18,7 +19,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: always
-    command: python3 celery_worker.py
+    command: celery -A apis.celery_worker worker --loglevel=info
     volumes:
       - ./backend:/backend
     environment:
@@ -26,6 +27,8 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all  # 让容器可以访问所有 GPU
       - NVIDIA_DRIVER_CAPABILITIES=all  # 让容器具有完整的 GPU 功能（包括计算、视频等）
       - RESULT_DIR=/tmp/results
+      - TZ=Asia/Tokyo
+      - CELERY_TIMEZONE=Asia/Tokyo
     deploy:
       resources:
         reservations:
@@ -57,7 +60,7 @@ services:
       - /dev/bus/usb:/dev/bus/usb
     environment:
       - UDEV=1
-      # - LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1
+      - TZ=Asia/Tokyo
     depends_on:
       # tritonserver:
       #   condition: service_started
@@ -83,9 +86,10 @@ services:
       dockerfile: Dockerfile.dev
     volumes:
       - ./frontend:/frontend
-      - /frontend/node_modules:/frontend/node_modules
     working_dir: /frontend
     restart: always
+    environment:
+      - TZ=Asia/Tokyo
     ports:
       - "3002:3000"
     depends_on:
@@ -112,6 +116,8 @@ services:
     volumes:
       # directory must be created first, with uid:gid 10001:10001
       - ./volumes/dev_loki:/loki
+    environment:
+      - TZ=Asia/Tokyo
     healthcheck:
       test: ["CMD", "wget","--spider", "http://localhost:3100/ready"]
       interval: 30s
